@@ -2,10 +2,10 @@
 
 #include <net/ethernet.h>
 
-#include "common.hpp"
-#include "netmap.hpp"
+#include "../common.hpp"
+#include "../netmap.hpp"
 
-#include "ether.hpp"
+#include "../ether.hpp"
 
 extern bool debug;
 
