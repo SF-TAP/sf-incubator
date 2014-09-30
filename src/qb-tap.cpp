@@ -143,8 +143,10 @@ main(int argc, char** argv)
 
     tap_list = split(opt_t, ",");
     if (opt_t.size() == 0) {
+        /*
         usage(argv[0]);
         exit(EXIT_FAILURE);
+        */
     }
 
     for (auto it : tap_list) {
