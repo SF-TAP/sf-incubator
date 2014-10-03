@@ -30,8 +30,7 @@ struct ip_hdr {
 }  __packed __aligned(4);
 
 struct selector_info {
-    uint16_t dport;
-    uint16_t sport;
+    uint32_t port;
 };
 
 struct selector_info* selector_info;
@@ -54,18 +53,22 @@ get_ip4_transport_key(struct ip_hdr* iphdr)
     uint32_t hash;
     uint32_t retval = 0;
 
-    int offset = iphdr->frag_off & IP_OFFMASK;
+    uint16_t offset = iphdr->frag_off & htons(IP_OFFMASK);
 
     if (offset == 0) {
-        if ((iphdr->frag_off&IP_MF) == 0) {
+        if ((iphdr->frag_off&htons(IP_MF)) == 0) {
             // offset off, MF off
-            switch (iphdr->protocol)
+            switch(iphdr->protocol)
             {
                 case IPPROTO_TCP:
                 {
                     struct tcphdr* tcphdr =
                         (struct tcphdr*)((char*)iphdr+(iphdr->hl<<2));
-                    retval = tcphdr->th_sport<<16 | tcphdr->th_dport;
+                    if (tcphdr->th_sport <= tcphdr->th_dport) {
+                        retval = tcphdr->th_sport<<16 | tcphdr->th_dport;
+                    } else {
+                        retval = tcphdr->th_dport<<16 | tcphdr->th_sport;
+                    }
                     goto SUCCESS;
                     break;
                 }
@@ -74,7 +77,11 @@ get_ip4_transport_key(struct ip_hdr* iphdr)
                 {
                     struct udphdr* udphdr =
                         (struct udphdr*)((char*)iphdr+(iphdr->hl<<2));
-                    retval = udphdr->uh_sport<<16 | udphdr->uh_dport;
+                    if (udphdr->uh_sport <= udphdr->uh_dport) {
+                        retval = udphdr->uh_sport<<16 | udphdr->uh_dport;
+                    } else {
+                        retval = udphdr->uh_dport<<16 | udphdr->uh_sport;
+                    }
                     goto SUCCESS;
                     break;
                 }
@@ -99,12 +106,15 @@ get_ip4_transport_key(struct ip_hdr* iphdr)
                 {
                     struct tcphdr* tcphdr =
                         (struct tcphdr*)((char*)iphdr+(iphdr->hl<<2));
-                    retval = tcphdr->th_sport<<16 | tcphdr->th_dport;
+                    if (tcphdr->th_sport <= tcphdr->th_dport) {
+                        retval = tcphdr->th_sport<<16 | tcphdr->th_dport;
+                    } else {
+                        retval = tcphdr->th_dport<<16 | tcphdr->th_sport;
+                    }
                     hash = (iphdr->id)^
                            (iphdr->saddr)^
                            (iphdr->daddr);
-                    selector_info[hash/selector_hash_size].sport = retval>>16;
-                    selector_info[hash/selector_hash_size].dport = (uint16_t)retval;
+                    selector_info[hash/selector_hash_size].port = retval;
                     goto SUCCESS;
                 }
 
@@ -112,12 +122,15 @@ get_ip4_transport_key(struct ip_hdr* iphdr)
                 {
                     struct udphdr* udphdr =
                         (struct udphdr*)((char*)iphdr+(iphdr->hl<<2));
-                    retval = udphdr->uh_sport<<16 | udphdr->uh_dport;
+                    if (udphdr->uh_sport<<16 <= udphdr->uh_dport) {
+                        retval = udphdr->uh_sport<<16 | udphdr->uh_dport;
+                    } else {
+                        retval = udphdr->uh_dport<<16 | udphdr->uh_sport;
+                    }
                     hash = (iphdr->id)^
                            (iphdr->saddr)^
                            (iphdr->daddr);
-                    selector_info[hash/selector_hash_size].sport = retval>>16;
-                    selector_info[hash/selector_hash_size].dport = (uint16_t)retval;
+                    selector_info[hash/selector_hash_size].port = retval;
                     goto SUCCESS;
                 }
 
@@ -133,23 +146,20 @@ get_ip4_transport_key(struct ip_hdr* iphdr)
             }
         }
     } else {
-        if ((iphdr->frag_off&IP_MF) == 0) {
+        if ((iphdr->frag_off&htons(IP_MF)) == 0) {
             // offset on, MF off
             hash = (iphdr->id)^
                    (iphdr->saddr)^
                    (iphdr->daddr);
-            retval = ((selector_info[hash/selector_hash_size].sport)<<16) &
-                      (selector_info[hash/selector_hash_size].dport);
-            selector_info[hash/selector_hash_size].sport = 0;
-            selector_info[hash/selector_hash_size].dport = 0;
+            retval = selector_info[hash/selector_hash_size].port;
+            selector_info[hash/selector_hash_size].port = 0;
             goto SUCCESS;
         } else {
             // offset on, MF on
             hash = (iphdr->id)^
                    (iphdr->saddr)^
                    (iphdr->daddr);
-            retval = ((selector_info[hash/selector_hash_size].sport)<<16) &
-                      (selector_info[hash/selector_hash_size].dport);
+            retval = selector_info[hash/selector_hash_size].port;
             goto SUCCESS;
         }
     }
@@ -161,7 +171,7 @@ get_ip4_transport_key(struct ip_hdr* iphdr)
     return 0;
 }
 
-inline int
+inline uint32_t
 next_ip4(struct ip_hdr* iphdr, int flag)
 {
     if (flag == 0) {
@@ -177,7 +187,7 @@ next_ip4(struct ip_hdr* iphdr, int flag)
     }
 }
 
-inline int
+inline uint32_t
 next_ip6(struct ip6_hdr* ip6hdr, int flag)
 {
     return 0;
@@ -190,7 +200,7 @@ interface_selector(struct netmap_ring* ring,
         std::vector<struct tap_info>& v_tap_info, int flag)
 {
 
-    int selection = -1;
+    uint32_t selection = -1;
     if (v_tap_info.size() == 0) return selection;
 
     struct netmap_slot* rx_slot = 
@@ -201,8 +211,8 @@ interface_selector(struct netmap_ring* ring,
 
     //size_t ethlen = rx_slot->len;
 
-    switch(eth->ether_type) {
-
+    switch(ntohs(eth->ether_type))
+    {
         case ETHERTYPE_IP:
         {
             selection = 
@@ -229,7 +239,9 @@ interface_selector(struct netmap_ring* ring,
 
     }
 
+    //printf("selection    :0x%x\n", selection);
     selection = selection % v_tap_info.size();
+    //printf("selection_mod:0x%x\n", selection);
 
     return selection;
 }

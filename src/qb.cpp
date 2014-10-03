@@ -15,7 +15,8 @@
 #include "netmap.hpp"
 #include "ether.hpp"
 
-#ifndef FULLTAP
+#ifdef FULLTAP
+#else
 #include "selector.hpp"
 #endif
 
@@ -180,7 +181,8 @@ main(int argc, char** argv)
         v_nm_t.push_back(nm_tmp);
     }
 
-#ifndef FULLTAP
+#ifdef FULLTAP
+#else
     selector_init(SELECTOR_HASH_SIZE);
 #endif
 
@@ -441,47 +443,7 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
         }
     }
 
-#ifndef FULLTAP
-    //FUNCTAP_TAP_IF_ZERO:
-    struct tap_info* ti;
-    for (;;) {
-
-        nm->rxsync_block(fd);
-
-        while (rxring->avail > 0) {
-
-            int selection = 0;
-            //selection = interface_selector(rxring, v_tap_info, 1);
-            if (selection != -1) {
-                ti = &v_tap_info.at(selection);
-
-                //ti->nm->tx_ring_lock(ti->ringid);
-
-                //std::cout << ti.nm->get_ifname() << std::endl;
-                //std::cout << ti.ring->avail << std::endl;
-
-                if (ti->ring->avail == 0) goto FUNCTAP_SKIP_TAP;
-
-                slot_swap(rxring, ti->ring);
-                ti->nm->next(ti->ring);
-                ti->ring->avail--;
-            }
-            FUNCTAP_SKIP_TAP:
-            //ti->nm->tx_ring_unlock(ti->ringid);
-
-            nm->next(rxring);
-            rxring->avail--;
-
-        }
-
-        for (auto it : v_tap_info) {
-            //it.nm->tx_ring_lock(it.ringid);
-            it.nm->txsync(it.fd, it.ringid);
-            //it.nm->tx_ring_unlock(it.ringid);
-        }
-
-    }
-#else
+#ifdef FULLTAP
     for (;;) {
 
         nm->rxsync_block(fd);
@@ -501,6 +463,49 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
                 it.nm->next(it.ring);
                 it.ring->avail--;
                 it.nm->tx_ring_unlock(it.ringid);
+            }
+
+            nm->next(rxring);
+            rxring->avail--;
+
+        }
+
+        for (auto it : v_tap_info) {
+            it.nm->tx_ring_lock(it.ringid);
+            it.nm->txsync(it.fd, it.ringid);
+            it.nm->tx_ring_unlock(it.ringid);
+        }
+
+    }
+#else
+    struct tap_info* ti;
+    for (;;) {
+
+        //nm_rx->rxsync(rx_fd, rx_ringid);
+        nm->rxsync_block(fd);
+
+        while (rxring->avail > 0) {
+
+            int selection;
+            selection = interface_selector(rxring, v_tap_info, 1);
+            if (selection != -1) {
+                ti = &v_tap_info.at(selection);
+                ti->nm->tx_ring_lock(ti->ringid);
+
+                //std::cout << ti.nm->get_ifname() << std::endl;
+                //std::cout << ti.ring->avail << std::endl;
+                //std::cout << selection << std::endl;
+
+                if (ti->ring->avail == 0) {
+                    // XXX ToDo drop count
+                    ;
+                } else {
+                    slot_swap(rxring, ti->ring);
+                    ti->nm->next(ti->ring);
+                    ti->ring->avail--;
+                }
+
+                ti->nm->tx_ring_unlock(ti->ringid);
             }
 
             nm->next(rxring);
@@ -569,61 +574,7 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
         }
     }
 
-#ifndef FULLTAP
-    for (;;) {
-
-        //nm_rx->rxsync(rx_fd, rx_ringid);
-        nm_rx->rxsync_block(rx_fd);
-        
-        while (rxring->avail > 0) {
-
-            if (txring->avail == 0) break;
-
-            /*
-            int selection;
-            selection = interface_selector(rxring, v_tap_info, 1);
-            if (selection != -1) {
-                struct tap_info* ti;
-                ti = &v_tap_info.at(selection);
-                ti->nm->tx_ring_lock(ti->ringid);
-
-                //std::cout << ti.nm->get_ifname() << std::endl;
-                //std::cout << ti.ring->avail << std::endl;
-                //std::cout << selection << std::endl;
-
-                if (ti->ring->avail == 0) {
-                    // XXX ToDo drop count
-                    ;
-                } else {
-                    pkt_copy(rxring, ti->ring);
-                    ti->nm->next(ti->ring);
-                    ti->ring->avail--;
-                }
-
-                ti->nm->tx_ring_unlock(ti->ringid);
-            }
-            */
-
-            slot_swap(rxring, txring);
-
-            nm_tx->next(txring);
-            txring->avail--;
-
-            nm_rx->next(rxring);
-            rxring->avail--;
-        }
-            
-        nm_tx->txsync(tx_fd, tx_ringid);
-        /*
-        for (auto it : v_tap_info) {
-            it.nm->tx_ring_lock(it.ringid);
-            it.nm->txsync(it.fd, it.ringid);
-            it.nm->tx_ring_unlock(it.ringid);
-        }
-        */
-
-    }
-#else
+#ifdef FULLTAP
     for (;;) {
 
         //nm_rx->rxsync(rx_fd, rx_ringid);
@@ -666,6 +617,59 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
             it.nm->tx_ring_lock(it.ringid);
             it.nm->txsync(it.fd, it.ringid);
             it.nm->tx_ring_unlock(it.ringid);
+        }
+
+    }
+#else
+    struct tap_info* ti;
+    for (;;) {
+
+        //nm_rx->rxsync(rx_fd, rx_ringid);
+        nm_rx->rxsync_block(rx_fd);
+        
+        while (rxring->avail > 0) {
+
+            if (txring->avail == 0) break;
+
+            int selection;
+            selection = interface_selector(rxring, v_tap_info, 1);
+            if (selection != -1) {
+                ti = &v_tap_info.at(selection);
+                ti->nm->tx_ring_lock(ti->ringid);
+
+                //std::cout << ti.nm->get_ifname() << std::endl;
+                //std::cout << ti.ring->avail << std::endl;
+                //std::cout << selection << std::endl;
+
+                if (ti->ring->avail == 0) {
+                    // XXX ToDo drop count
+                    ;
+                } else {
+                    pkt_copy(rxring, ti->ring);
+                    ti->nm->next(ti->ring);
+                    ti->ring->avail--;
+                }
+
+                ti->nm->tx_ring_unlock(ti->ringid);
+            }
+
+            slot_swap(rxring, txring);
+
+            nm_tx->next(txring);
+            txring->avail--;
+
+            nm_rx->next(rxring);
+            rxring->avail--;
+
+        }
+            
+        nm_tx->txsync(tx_fd, tx_ringid);
+        if(v_tap_info.size() != 0) {
+            for (auto it : v_tap_info) {
+                it.nm->tx_ring_lock(it.ringid);
+                it.nm->txsync(it.fd, it.ringid);
+                it.nm->tx_ring_unlock(it.ringid);
+            }
         }
 
     }
