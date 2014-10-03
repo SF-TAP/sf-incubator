@@ -15,6 +15,10 @@
 #include "netmap.hpp"
 #include "ether.hpp"
 
+#ifndef FULLTAP
+#include "selector.hpp"
+#endif
+
 extern bool debug;
 
 bool bind_cpu(int cpu, int reverse);
@@ -28,8 +32,10 @@ void tap_processing(netmap* nm,
 void fw_processing(netmap* nm_rx, netmap* nm_tx,
         int rx_ringid, int tx_ringid, std::vector<netmap*>* v_nm_tap);
 
-inline void
-frame_copy(struct netmap_ring* rxring, struct netmap_ring* txring);
+static inline void
+slot_swap(struct netmap_ring* rxring, struct netmap_ring* txring);
+static inline void
+pkt_copy(struct netmap_ring* rxring, struct netmap_ring* txring);
 
 void usage(char* prog_name);
 
@@ -143,10 +149,8 @@ main(int argc, char** argv)
 
     tap_list = split(opt_t, ",");
     if (opt_t.size() == 0) {
-        /*
-        usage(argv[0]);
-        exit(EXIT_FAILURE);
-        */
+        //usage(argv[0]);
+        //exit(EXIT_FAILURE);
     }
 
     for (auto it : tap_list) {
@@ -175,6 +179,10 @@ main(int argc, char** argv)
         }
         v_nm_t.push_back(nm_tmp);
     }
+
+#ifndef FULLTAP
+    selector_init(SELECTOR_HASH_SIZE);
+#endif
 
     //nm_l.dump_nmr();
     //nm_r.dump_nmr();
@@ -307,6 +315,7 @@ main(int argc, char** argv)
 
 bool bind_cpu(int cpu, int reverse)
 {
+#ifdef BINDCPU
     int cpus;
     cpus = sysconf(_SC_NPROCESSORS_ONLN);
 
@@ -330,6 +339,10 @@ bool bind_cpu(int cpu, int reverse)
     } else {
         return false;
     }
+#else
+    return true;
+#endif
+
 }
 
 void*
@@ -390,27 +403,33 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
     fd = nm->create_nmring_hard_rx(&rxring, ringid);
 
     if (debug) {
-        printf("recv_fd    :%d\n", fd);
-        printf("recv_ringid:%d\n", ringid);
-        printf("recv_rxring:%p\n", rxring);
+        printf("fd    :%d\n", fd);
+        printf("ringid:%d\n", ringid);
+        printf("rxring:%p\n", rxring);
     }
 
     //struct ether_header* eth;
     //size_t ethlen = 0;
 
     std::vector<struct tap_info> v_tap_info;
-    struct tap_info ti;
-    memset(&ti, 0, sizeof(ti));
-
     std::vector<int> v_fds;
+    /*
+    if (v_nm_tap->size() == 0) { 
+        if (debug) printf("no tap interface\n");
+        goto FUNCTAP_TAP_IF_ZERO;
+    }
+    */
     for (auto it : *v_nm_tap) {
-        ti.ringid = ringid / it->get_tx_qnum();
+        struct tap_info ti;
+        memset(&ti, 0, sizeof(ti));
+        ti.ringid = ringid % it->get_tx_qnum();
         ti.fd = it->get_tx_ring_info_fd(ti.ringid);
         ti.ring = it->get_tx_ring_info_ring(ti.ringid);
         ti.nm = it;
         v_tap_info.push_back(ti);
         memset(&ti, 0, sizeof(ti));
     }
+
 
     if (debug) {
         int cur = 0;
@@ -422,6 +441,47 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
         }
     }
 
+#ifndef FULLTAP
+    //FUNCTAP_TAP_IF_ZERO:
+    struct tap_info* ti;
+    for (;;) {
+
+        nm->rxsync_block(fd);
+
+        while (rxring->avail > 0) {
+
+            int selection = 0;
+            //selection = interface_selector(rxring, v_tap_info, 1);
+            if (selection != -1) {
+                ti = &v_tap_info.at(selection);
+
+                //ti->nm->tx_ring_lock(ti->ringid);
+
+                //std::cout << ti.nm->get_ifname() << std::endl;
+                //std::cout << ti.ring->avail << std::endl;
+
+                if (ti->ring->avail == 0) goto FUNCTAP_SKIP_TAP;
+
+                slot_swap(rxring, ti->ring);
+                ti->nm->next(ti->ring);
+                ti->ring->avail--;
+            }
+            FUNCTAP_SKIP_TAP:
+            //ti->nm->tx_ring_unlock(ti->ringid);
+
+            nm->next(rxring);
+            rxring->avail--;
+
+        }
+
+        for (auto it : v_tap_info) {
+            //it.nm->tx_ring_lock(it.ringid);
+            it.nm->txsync(it.fd, it.ringid);
+            //it.nm->tx_ring_unlock(it.ringid);
+        }
+
+    }
+#else
     for (;;) {
 
         nm->rxsync_block(fd);
@@ -436,7 +496,7 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
                     continue;
                 }
 
-                frame_copy(rxring, it.ring);
+                pkt_copy(rxring, it.ring);
 
                 it.nm->next(it.ring);
                 it.ring->avail--;
@@ -455,11 +515,13 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
         }
 
     }
+#endif
 
     nm->remove_nmring(ringid);
 
     return;
 }
+
 
 void
 fw_processing(netmap* nm_rx, netmap* nm_tx,
@@ -479,15 +541,17 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
         printf("rx_pointer:%p\n", rxring);
         printf("tx_fd:%d\n", tx_fd);
         printf("rx_fd:%d\n", rx_fd);
+        printf("tx_ringid:%d\n", tx_ringid);
+        printf("rx_ringid:%d\n", rx_ringid);
     }
 
     std::vector<struct tap_info> v_tap_info;
-    struct tap_info ti;
-    memset(&ti, 0, sizeof(ti));
-
     std::vector<int> v_fds;
+
     for (auto it : *v_nm_tap) {
-        ti.ringid = rx_ringid / it->get_tx_qnum();
+        struct tap_info ti;
+        memset(&ti, 0, sizeof(ti));
+        ti.ringid = rx_ringid % it->get_tx_qnum();
         ti.fd = it->get_tx_ring_info_fd(ti.ringid);
         ti.ring = it->get_tx_ring_info_ring(ti.ringid);
         ti.nm = it;
@@ -505,6 +569,61 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
         }
     }
 
+#ifndef FULLTAP
+    for (;;) {
+
+        //nm_rx->rxsync(rx_fd, rx_ringid);
+        nm_rx->rxsync_block(rx_fd);
+        
+        while (rxring->avail > 0) {
+
+            if (txring->avail == 0) break;
+
+            /*
+            int selection;
+            selection = interface_selector(rxring, v_tap_info, 1);
+            if (selection != -1) {
+                struct tap_info* ti;
+                ti = &v_tap_info.at(selection);
+                ti->nm->tx_ring_lock(ti->ringid);
+
+                //std::cout << ti.nm->get_ifname() << std::endl;
+                //std::cout << ti.ring->avail << std::endl;
+                //std::cout << selection << std::endl;
+
+                if (ti->ring->avail == 0) {
+                    // XXX ToDo drop count
+                    ;
+                } else {
+                    pkt_copy(rxring, ti->ring);
+                    ti->nm->next(ti->ring);
+                    ti->ring->avail--;
+                }
+
+                ti->nm->tx_ring_unlock(ti->ringid);
+            }
+            */
+
+            slot_swap(rxring, txring);
+
+            nm_tx->next(txring);
+            txring->avail--;
+
+            nm_rx->next(rxring);
+            rxring->avail--;
+        }
+            
+        nm_tx->txsync(tx_fd, tx_ringid);
+        /*
+        for (auto it : v_tap_info) {
+            it.nm->tx_ring_lock(it.ringid);
+            it.nm->txsync(it.fd, it.ringid);
+            it.nm->tx_ring_unlock(it.ringid);
+        }
+        */
+
+    }
+#else
     for (;;) {
 
         //nm_rx->rxsync(rx_fd, rx_ringid);
@@ -526,21 +645,20 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
                     continue;
                 }
 
-                frame_copy(rxring, it.ring);
+                pkt_copy(rxring, it.ring);
 
                 it.nm->next(it.ring);
                 it.ring->avail--;
                 it.nm->tx_ring_unlock(it.ringid);
             }
 
-            frame_copy(rxring, txring);
+            slot_swap(rxring, txring);
 
             nm_tx->next(txring);
             txring->avail--;
 
             nm_rx->next(rxring);
             rxring->avail--;
-
         }
 
         nm_tx->txsync(tx_fd, tx_ringid);
@@ -551,6 +669,7 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
         }
 
     }
+#endif
 
     nm_rx->remove_nmring(rx_ringid);
     nm_tx->remove_nmring(tx_ringid);
@@ -558,8 +677,8 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
     return;
 }
 
-inline void
-frame_copy(struct netmap_ring* rxring, struct netmap_ring* txring)
+static inline void
+slot_swap(struct netmap_ring* rxring, struct netmap_ring* txring)
 {
     struct netmap_slot* rx_slot = 
          ((netmap_slot*)&rxring->slot[rxring->cur]);
@@ -567,26 +686,66 @@ frame_copy(struct netmap_ring* rxring, struct netmap_ring* txring)
     struct netmap_slot* tx_slot = 
          ((netmap_slot*)&txring->slot[txring->cur]);
 
+#ifdef USERLAND_COPY
+
     struct ether_header* rx_eth = 
         (struct ether_header*)NETMAP_BUF(rxring, rx_slot->buf_idx);
-
     struct ether_header* tx_eth = 
         (struct ether_header*)NETMAP_BUF(txring, tx_slot->buf_idx);
+    memcpy(tx_eth, rx_eth, tx_slot->len);
 
+#else
 
-    /*
-    ((netmap_slot*)&rxring->slot[rxring->cur])->len = 
-        ((netmap_slot*)&txring->slot[txring->cur])->len;
-    */
+    uint32_t buf_idx;
+    buf_idx = tx_slot->buf_idx;
+    tx_slot->buf_idx = rx_slot->buf_idx;
+    rx_slot->buf_idx = buf_idx;
+    tx_slot->flags |= NS_BUF_CHANGED;
+    rx_slot->flags |= NS_BUF_CHANGED;
+
+#endif
 
     tx_slot->len = rx_slot->len;
-    memcpy(tx_eth, rx_eth, tx_slot->len);
 
     /*
     if (debug) printf("------\n");
     if (debug) memdump(rx_eth, rx_slot->len);
     */
 
+    return;
+}
+
+static inline void
+pkt_copy(struct netmap_ring* rxring, struct netmap_ring* txring)
+{
+#define likely(x)       __builtin_expect(!!(x), 1)
+#define unlikely(x)       __builtin_expect(!!(x), 0)
+
+    struct netmap_slot* rx_slot = 
+         ((netmap_slot*)&rxring->slot[rxring->cur]);
+
+    struct netmap_slot* tx_slot = 
+         ((netmap_slot*)&txring->slot[txring->cur]);
+
+    uint64_t* src = (uint64_t*)(NETMAP_BUF(rxring, rx_slot->buf_idx));
+    uint64_t* dst = (uint64_t*)(NETMAP_BUF(txring, tx_slot->buf_idx));
+    int l = rx_slot->len;
+
+    if (unlikely(l >= 1024)) {
+        bcopy(src, dst, l);
+    } else {
+        for (; l >= 0; l-=32) {
+            *dst++ = *src++;
+            *dst++ = *src++;
+            *dst++ = *src++;
+            *dst++ = *src++;
+            *dst++ = *src++;
+            *dst++ = *src++;
+            *dst++ = *src++;
+            *dst++ = *src++;
+        }
+    }
+    tx_slot->len = rx_slot->len;
     return;
 }
 

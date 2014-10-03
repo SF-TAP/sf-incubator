@@ -2,13 +2,13 @@
 all: separator tap getinfo
 .PHONY : all
 
-separator: qb-separator.cpp netmap.hpp common.hpp
-	clang++ -std=c++11 -Wall -Wno-write-strings -Wno-unused-function -DPOLL -DDEBUG ./qb-separator.cpp -o qb-separator -lpthread
+separator: qb.cpp netmap.hpp common.hpp ether.hpp
+	clang++ -std=c++11 -Wall -Wno-write-strings -Wno-unused-function -DPOLL -DDEBUG ./qb.cpp -o qb-separator -lpthread
 .PHONY : separator
 
-tap: qb-tap.cpp netmap.hpp common.hpp
-	clang++ -std=c++11 -Wall -Wno-write-strings -Wno-unused-function -DPOLL -DDEBUG ./qb-tap.cpp -o qb-tap -lpthread
-.PHONY : tap
+tap: qb.cpp netmap.hpp common.hpp ether.hpp
+	clang++ -std=c++11 -Wall -Wno-write-strings -Wno-unused-function -DFULLTAP -DPOLL -DDEBUG ./qb.cpp -o qb-tap -lpthread
+.PHONY : separator
 
 getinfo: getinfo.c
 	clang -Wall -o getinfo ./getinfo.c
