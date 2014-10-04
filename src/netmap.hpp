@@ -495,10 +495,6 @@ inline void
 netmap::tx_ring_lock(int ringid)
 {
     while (__sync_lock_test_and_set(&tx_ring_info[ringid]->lock, 1)) {
-        //Compare-And-Swap(CAS)の命令は重いので単にループするだけのwhile
-        //を挟むことで，CASのループを少なくする．
-        //アダプティブロックにするならCAS-loop/while(lock)の回数を決めて
-        //sched_yield()を呼ぶこと．
         while (tx_ring_info[ringid]->lock) {};
     }
 
@@ -538,17 +534,22 @@ inline void
 netmap::rx_ring_lock(int ringid)
 {
     while (__sync_lock_test_and_set(&rx_ring_info[ringid]->lock, 1)) {
-        //Compare-And-Swap(CAS)の命令は重いので単にループするだけのwhile
-        //を挟むことで，CASのループを少なくする．
-        //アダプティブロックにするならCAS-loop/while(lock)の回数を決めて
-        //sched_yield()を呼ぶこと．
         while (rx_ring_info[ringid]->lock) {};
     }
 
     /*
+    adaptive_lock;
+    const adaptive_count = 100;
+    int lock_cond = 0;
     while (__sync_bool_compare_and_swap(&rx_ring_info[ringid]->lock, 0, 1) == 0) {
         asm volatile("lfence" ::: "memory");
-        sched_yield();
+        while (tx_ring_info[ringid]->lock) {
+            if (cond < adaptive_count) { 
+                loc_cond++;
+            } else {
+                sched_yield();
+            }
+        };
     }
     */
     return;
