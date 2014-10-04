@@ -503,11 +503,21 @@ netmap::tx_ring_lock(int ringid)
     }
 
     /*
+    adaptive_lock;
+    const adaptive_count = 100;
+    int lock_cond = 0;
     while (__sync_bool_compare_and_swap(&tx_ring_info[ringid]->lock, 0, 1) == 0) {
         asm volatile("lfence" ::: "memory");
-        sched_yield();
+        while (tx_ring_info[ringid]->lock) {
+            if (cond < adaptive_count) { 
+                loc_cond++;
+            } else {
+                sched_yield();
+            }
+        };
     }
     */
+
     return;
 }
 
@@ -520,6 +530,7 @@ netmap::tx_ring_unlock(int ringid)
     tx_ring_info[ringid]->lock = 0;
     asm volatile("sfence" ::: "memory");
     */
+
     return;
 }
 
