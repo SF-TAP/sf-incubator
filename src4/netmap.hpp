@@ -65,8 +65,8 @@ public:
     inline bool txsync_pollall();
     int create_nmring_hard_tx(struct netmap_ring** ring, int qnum);
     int create_nmring_hard_rx(struct netmap_ring** ring, int qnum);
-    int create_nmring_soft_tx(struct netmap_ring** ring, int qnum);
-    int create_nmring_soft_rx(struct netmap_ring** ring, int qnum);
+    int create_nmring_soft_tx(struct netmap_ring** ring);
+    int create_nmring_soft_rx(struct netmap_ring** ring);
     bool remove_txring(int qnum);
     bool remove_rxring(int qnum);
 
@@ -749,6 +749,7 @@ netmap::_create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw)
 
     char* mem = (char*)mmap(NULL, nmr.nr_memsize,
             PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+    if (debug) printf("mem:%p\n", mem);
     if (mem == MAP_FAILED) {
         perror("mmap");
         MESG("unable to mmap");
@@ -859,19 +860,19 @@ netmap::create_nmring_hard_rx(struct netmap_ring** ring, int qnum)
 }
 
 int
-netmap::create_nmring_soft_tx(struct netmap_ring** ring, int qnum)
+netmap::create_nmring_soft_tx(struct netmap_ring** ring)
 {
     int rxtx = NETMAP_TX;
     int swhw = NETMAP_SW_RING;
-    return _create_nmring(ring, qnum, rxtx, swhw);
+    return _create_nmring(ring, 0, rxtx, swhw);
 }
 
 int
-netmap::create_nmring_soft_rx(struct netmap_ring** ring, int qnum)
+netmap::create_nmring_soft_rx(struct netmap_ring** ring)
 {
     int rxtx = NETMAP_RX;
     int swhw = NETMAP_SW_RING;
-    return _create_nmring(ring, qnum, rxtx, swhw);
+    return _create_nmring(ring, 0, rxtx, swhw);
 }
 
 bool

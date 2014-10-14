@@ -67,8 +67,8 @@ public:
     inline bool txsync_pollall();
     int create_nmring_hard_tx(struct netmap_ring** ring, int qnum);
     int create_nmring_hard_rx(struct netmap_ring** ring, int qnum);
-    int create_nmring_soft_tx(struct netmap_ring** ring, int qnum);
-    int create_nmring_soft_rx(struct netmap_ring** ring, int qnum);
+    int create_nmring_soft_tx(struct netmap_ring** ring);
+    int create_nmring_soft_rx(struct netmap_ring** ring);
     bool remove_txring(int qnum);
     bool remove_rxring(int qnum);
 
@@ -946,19 +946,19 @@ netmap::create_nmring_hard_rx(struct netmap_ring** ring, int qnum)
 }
 
 int
-netmap::create_nmring_soft_tx(struct netmap_ring** ring, int qnum)
+netmap::create_nmring_soft_tx(struct netmap_ring** ring)
 {
     int rxtx = NETMAP_TX;
     int swhw = NETMAP_SW_RING;
-    return _create_nmring(ring, qnum, rxtx, swhw);
+    return _create_nmring(ring, 0, rxtx, swhw);
 }
 
 int
-netmap::create_nmring_soft_rx(struct netmap_ring** ring, int qnum)
+netmap::create_nmring_soft_rx(struct netmap_ring** ring)
 {
     int rxtx = NETMAP_RX;
     int swhw = NETMAP_SW_RING;
-    return _create_nmring(ring, qnum, rxtx, swhw);
+    return _create_nmring(ring, 0, rxtx, swhw);
 }
 
 bool
