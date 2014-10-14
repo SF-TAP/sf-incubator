@@ -67,7 +67,8 @@ public:
     int create_nmring_hard_rx(struct netmap_ring** ring, int qnum);
     int create_nmring_soft_tx(struct netmap_ring** ring, int qnum);
     int create_nmring_soft_rx(struct netmap_ring** ring, int qnum);
-    bool remove_nmring(int qnum);
+    bool remove_txring(int qnum);
+    bool remove_rxring(int qnum);
 
     // utils methods
     void dump_nmr();
