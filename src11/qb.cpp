@@ -533,8 +533,6 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
 
 #endif
 
-    nm->remove_nmring(ringid);
-
     return;
 }
 
@@ -695,9 +693,6 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
     }
 
 #endif
-
-    nm_rx->remove_nmring(rx_ringid);
-    nm_tx->remove_nmring(tx_ringid);
 
     return;
 }

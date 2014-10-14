@@ -874,7 +874,7 @@ netmap::create_nmring_soft_rx(struct netmap_ring** ring, int qnum)
 }
 
 bool
-netmap::remove_nmring(int qnum)
+netmap::remove_txring(int qnum)
 {
     pthread_mutex_lock(&lock_ring_info);
 
@@ -896,6 +896,22 @@ netmap::remove_nmring(int qnum)
         free(tmp_value);
     }
     tx_ring_info.erase(it);
+
+    pthread_mutex_unlock(&lock_ring_info);
+    return true;
+
+    REMOVE_FAIL:
+    pthread_mutex_unlock(&lock_ring_info);
+    return false;
+}
+
+bool
+netmap::remove_rxring(int qnum)
+{
+    pthread_mutex_lock(&lock_ring_info);
+
+    std::map<int, struct ring_info*>::iterator it;
+    struct ring_info* tmp_value;
 
     it = rx_ring_info.find(qnum);
     if(it == rx_ring_info.end()) {
