@@ -864,7 +864,7 @@ netmap::create_nmring_soft_tx(struct netmap_ring** ring)
 {
     int rxtx = NETMAP_TX;
     int swhw = NETMAP_SW_RING;
-    return _create_nmring(ring, 0, rxtx, swhw);
+    return _create_nmring(ring, nm_tx_qnum, rxtx, swhw);
 }
 
 int
@@ -872,7 +872,7 @@ netmap::create_nmring_soft_rx(struct netmap_ring** ring)
 {
     int rxtx = NETMAP_RX;
     int swhw = NETMAP_SW_RING;
-    return _create_nmring(ring, 0, rxtx, swhw);
+    return _create_nmring(ring, nm_rx_qnum, rxtx, swhw);
 }
 
 bool
