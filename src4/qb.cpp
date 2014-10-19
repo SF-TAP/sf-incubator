@@ -444,6 +444,7 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
     }
 
 #ifdef FULLTAP
+
     for (;;) {
 
         nm->rxsync_block(fd);
@@ -477,7 +478,9 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
         }
 
     }
+
 #else
+
     struct tap_info* ti;
     for (;;) {
 
@@ -520,6 +523,7 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
         }
 
     }
+
 #endif
 
     return;
@@ -573,6 +577,7 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
     }
 
 #ifdef FULLTAP
+
     for (;;) {
 
         //nm_rx->rxsync(rx_fd, rx_ringid);
@@ -618,7 +623,9 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
         }
 
     }
+
 #else
+
     struct tap_info* ti;
     for (;;) {
 
@@ -671,6 +678,7 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
         }
 
     }
+
 #endif
 
     return;
@@ -717,15 +725,14 @@ slot_swap(struct netmap_ring* rxring, struct netmap_ring* txring)
 static inline void
 pkt_copy(struct netmap_ring* rxring, struct netmap_ring* txring)
 {
-#define likely(x)       __builtin_expect(!!(x), 1)
-#define unlikely(x)       __builtin_expect(!!(x), 0)
-
+    // copy from netmap-vale.c:pkt_copy
     struct netmap_slot* rx_slot = 
          ((netmap_slot*)&rxring->slot[rxring->cur]);
 
     struct netmap_slot* tx_slot = 
          ((netmap_slot*)&txring->slot[txring->cur]);
-
+    #define likely(x)   __builtin_expect(!!(x), 1)
+    #define unlikely(x) __builtin_expect(!!(x), 0)
     uint64_t* src = (uint64_t*)(NETMAP_BUF(rxring, rx_slot->buf_idx));
     uint64_t* dst = (uint64_t*)(NETMAP_BUF(txring, tx_slot->buf_idx));
     int l = rx_slot->len;
@@ -744,6 +751,8 @@ pkt_copy(struct netmap_ring* rxring, struct netmap_ring* txring)
             *dst++ = *src++;
         }
     }
+    #undef likely
+    #undef unlikely
     tx_slot->len = rx_slot->len;
     return;
 }
