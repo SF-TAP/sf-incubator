@@ -613,7 +613,7 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
                     continue;
                 }
 
-                pkt_copy(rxring, it.ring, 1);
+                pkt_copy(rxring, it.ring, 0);
 
                 it.nm->next(it.ring);
                 tap_avail--;
@@ -621,7 +621,7 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
             }
 
             //slot_swap(rxring, txring);
-            pkt_copy(rxring, txring, 1);
+            pkt_copy(rxring, txring, 0);
 
             nm_tx->next(txring);
             tx_avail--;
@@ -774,6 +774,8 @@ pkt_copy(struct netmap_ring* rxring, struct netmap_ring* txring, int flag)
         #undef unlikely
 
     } else if (flag == 1) {
+
+        // dont working...
 
         struct netmap_slot* rx_slot = 
              ((netmap_slot*)&rxring->slot[rxring->cur]);
