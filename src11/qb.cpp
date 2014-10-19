@@ -39,7 +39,7 @@ void fw_processing(netmap* nm_rx, netmap* nm_tx,
 static inline void
 slot_swap(struct netmap_ring* rxring, struct netmap_ring* txring);
 static inline void
-pkt_copy(struct netmap_ring* rxring, struct netmap_ring* txring);
+pkt_copy(struct netmap_ring* rxring, struct netmap_ring* txring, int flag);
 
 void usage(char* prog_name);
 
@@ -468,7 +468,7 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
                     continue;
                 }
 
-                pkt_copy(rxring, it.ring);
+                pkt_copy(rxring, it.ring, 0);
 
                 it.nm->next(it.ring);
                 tap_avail--;
@@ -613,14 +613,15 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
                     continue;
                 }
 
-                pkt_copy(rxring, it.ring);
+                pkt_copy(rxring, it.ring, 1);
 
                 it.nm->next(it.ring);
                 tap_avail--;
                 it.nm->tx_ring_unlock(it.ringid);
             }
 
-            slot_swap(rxring, txring);
+            //slot_swap(rxring, txring);
+            pkt_copy(rxring, txring, 1);
 
             nm_tx->next(txring);
             tx_avail--;
@@ -663,7 +664,7 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
                     // XXX ToDo drop count
                     ;
                 } else {
-                    pkt_copy(rxring, ti->ring);
+                    pkt_copy(rxring, ti->ring, 0);
                     ti->nm->next(ti->ring);
                     tap_avail--;
                 }
@@ -736,36 +737,55 @@ slot_swap(struct netmap_ring* rxring, struct netmap_ring* txring)
 }
 
 static inline void
-pkt_copy(struct netmap_ring* rxring, struct netmap_ring* txring)
+pkt_copy(struct netmap_ring* rxring, struct netmap_ring* txring, int flag)
 {
-#define likely(x)       __builtin_expect(!!(x), 1)
-#define unlikely(x)       __builtin_expect(!!(x), 0)
+    if (flag == 0) {
 
-    struct netmap_slot* rx_slot = 
-         ((netmap_slot*)&rxring->slot[rxring->cur]);
+        #define likely(x)       __builtin_expect(!!(x), 1)
+        #define unlikely(x)       __builtin_expect(!!(x), 0)
 
-    struct netmap_slot* tx_slot = 
-         ((netmap_slot*)&txring->slot[txring->cur]);
+        struct netmap_slot* rx_slot = 
+             ((netmap_slot*)&rxring->slot[rxring->cur]);
 
-    uint64_t* src = (uint64_t*)(NETMAP_BUF(rxring, rx_slot->buf_idx));
-    uint64_t* dst = (uint64_t*)(NETMAP_BUF(txring, tx_slot->buf_idx));
-    int l = rx_slot->len;
+        struct netmap_slot* tx_slot = 
+             ((netmap_slot*)&txring->slot[txring->cur]);
 
-    if (unlikely(l >= 1024)) {
-        bcopy(src, dst, l);
-    } else {
-        for (; l >= 0; l-=32) {
-            *dst++ = *src++;
-            *dst++ = *src++;
-            *dst++ = *src++;
-            *dst++ = *src++;
-            *dst++ = *src++;
-            *dst++ = *src++;
-            *dst++ = *src++;
-            *dst++ = *src++;
+        uint64_t* src = (uint64_t*)(NETMAP_BUF(rxring, rx_slot->buf_idx));
+        uint64_t* dst = (uint64_t*)(NETMAP_BUF(txring, tx_slot->buf_idx));
+        int l = rx_slot->len;
+
+        if (unlikely(l >= 1024)) {
+            bcopy(src, dst, l);
+        } else {
+            for (; l >= 0; l-=32) {
+                *dst++ = *src++;
+                *dst++ = *src++;
+                *dst++ = *src++;
+                *dst++ = *src++;
+                *dst++ = *src++;
+                *dst++ = *src++;
+                *dst++ = *src++;
+                *dst++ = *src++;
+            }
         }
+        tx_slot->len = rx_slot->len;
+
+        #undef likely
+        #undef unlikely
+
+    } else if (flag == 1) {
+
+        struct netmap_slot* rx_slot = 
+             ((netmap_slot*)&rxring->slot[rxring->cur]);
+        struct netmap_slot* tx_slot = 
+             ((netmap_slot*)&txring->slot[txring->cur]);
+        char* src = NETMAP_BUF(rxring, tx_slot->buf_idx);
+        //char* dst = NETMAP_BUF(txring, tx_slot->buf_idx);
+        tx_slot->flags |= NS_INDIRECT;
+        tx_slot->ptr = (uint64_t)src
+        tx_slot->len = rx_slot->len;
+
     }
-    tx_slot->len = rx_slot->len;
     return;
 }
 
