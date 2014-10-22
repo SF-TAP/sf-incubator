@@ -784,7 +784,7 @@ pkt_copy(struct netmap_ring* rxring, struct netmap_ring* txring, int flag)
         char* src = NETMAP_BUF(rxring, tx_slot->buf_idx);
         //char* dst = NETMAP_BUF(txring, tx_slot->buf_idx);
         tx_slot->flags |= NS_INDIRECT;
-        tx_slot->ptr = (uint64_t)src
+        tx_slot->ptr = (uint64_t)src;
         tx_slot->len = rx_slot->len;
 
     }
