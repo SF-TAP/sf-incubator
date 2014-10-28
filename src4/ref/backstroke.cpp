@@ -9,6 +9,32 @@
 
 extern bool debug;
 
+static inline void
+slot_swap(struct netmap_ring* rxring, struct netmap_ring* txring)
+{   
+    struct netmap_slot* rx_slot = 
+         ((netmap_slot*)&rxring->slot[rxring->cur]);
+    
+    struct netmap_slot* tx_slot = 
+         ((netmap_slot*)&txring->slot[txring->cur]);
+    
+    uint32_t buf_idx;
+    buf_idx = tx_slot->buf_idx;
+    tx_slot->buf_idx = rx_slot->buf_idx;
+    rx_slot->buf_idx = buf_idx;
+    tx_slot->flags |= NS_BUF_CHANGED;
+    rx_slot->flags |= NS_BUF_CHANGED;
+
+    tx_slot->len = rx_slot->len;
+    
+    /*
+    if (debug) printf("------\n");
+    if (debug) memdump(rx_eth, rx_slot->len);
+    */
+    
+    return;
+}
+
 int
 main(int argc, char** argv)
 {
@@ -64,10 +90,14 @@ main(int argc, char** argv)
             printf("frmae length %lu\n", ethlen);
             pktdump((uint8_t*)eth, ethlen);
 
+            /*
             struct ether_header* eth_tx = nm.get_eth(txring);
 
             memcpy(eth_tx, eth, ethlen);
             nm.set_ethlen(txring, ethlen);
+            */
+
+            slot_swap(rxring, txring);
 
             txring->avail--;
             nm.next(txring);

@@ -2,6 +2,8 @@
 #ifndef __netmap_hpp__
 #define __netmap_hpp__
 
+#define USE_NETMAP_API_11
+
 #include "common.hpp"
 
 #include <iostream>
@@ -822,10 +824,18 @@ netmap::_create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw)
     strncpy (nmr.nr_name, nm_ifname, strlen(nm_ifname));
     nmr.nr_version = nm_version;
     nmr.nr_ringid = (swhw | qnum);
-    //printf("ringid:%x\n", nmr.nr_ringid);
-    // swhw : soft ring or hard ring
     //NETMAP_HW_RING 0x4000
     //NETMAP_SW_RING 0x2000
+#if NETMAP_API > 4
+    nmr.nr_ringid = nmr.nr_ringid | NETMAP_NO_TX_POLL | NETMAP_DO_RX_POLL;
+    if (swhw == NETMAP_SW_RING) {
+        nmr.nr_flags = NR_REG_SW;
+    } else if (swhw == NETMAP_HW_RING) {
+        nmr.nr_flags = NR_REG_ONE_NIC;
+    } else {
+        nmr.nr_flags = 0;
+    }
+#endif
 
     if (ioctl(fd, NIOCREGIF, &nmr) < 0) {
         perror("ioctl");
