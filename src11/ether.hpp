@@ -142,7 +142,7 @@ get_ifname_list()
 
     std::set<std::string>::iterator it;
     for (it = s.begin(); it != s.end(); it++) {
-        std::cout << *it << std::endl;
+        //std::cout << *it << std::endl;
         v.push_back(*it);
     }
 
