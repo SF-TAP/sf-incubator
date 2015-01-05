@@ -40,6 +40,7 @@
 #include <net/netmap_user.h>
 
 char* netmap_mem = NULL;
+int netmap_mem_ref = 0;
 
 class netmap
 {
@@ -154,11 +155,14 @@ netmap::~netmap()
     for (it = tx_ring_info.begin(); it != tx_ring_info.end(); it++) {
         struct ring_info* tmp_value = it->second;
         if (tmp_value->map != NULL) {
-            /*
-            if (munmap(tmp_value->map, nm_memsize) != 0) {
-                exit(EXIT_FAILURE);
+            if (netmap_mem_ref == 1) {
+                if (munmap(tmp_value->map, nm_memsize) != 0) {
+                    exit(EXIT_FAILURE);
+                }
+                netmap_mem_ref--;
+            } else {
+                netmap_mem_ref--;
             }
-            */
             tmp_value->map = NULL;
             close(tmp_value->fd);
             free(tmp_value);
@@ -850,12 +854,15 @@ netmap::_create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw)
     if (netmap_mem == NULL) {
         netmap_mem= (char*)mmap(NULL, nmr.nr_memsize,
                 PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-    }
+    } 
     if (netmap_mem == MAP_FAILED) {
         perror("mmap");
         MESG("unable to mmap");
         close(fd);
+        netmap_mem_ref--;
         return -1;
+    } else {
+        netmap_mem_ref++;
     }
 
     nmif = NETMAP_IF(netmap_mem, nmr.nr_offset);
