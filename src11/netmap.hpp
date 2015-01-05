@@ -39,6 +39,7 @@
 #include <net/netmap.h>
 #include <net/netmap_user.h>
 
+char* netmap_mem = NULL;
 
 class netmap
 {
@@ -153,9 +154,11 @@ netmap::~netmap()
     for (it = tx_ring_info.begin(); it != tx_ring_info.end(); it++) {
         struct ring_info* tmp_value = it->second;
         if (tmp_value->map != NULL) {
+            /*
             if (munmap(tmp_value->map, nm_memsize) != 0) {
                 exit(EXIT_FAILURE);
             }
+            */
             tmp_value->map = NULL;
             close(tmp_value->fd);
             free(tmp_value);
@@ -202,7 +205,7 @@ netmap::open_if(const char* ifname)
         return false;
     }
     memset(&nm_nmr, 0, sizeof(nm_nmr));
-    nm_version = 4;
+    nm_version = NETMAP_API;
     nm_nmr.nr_version = nm_version;
     strncpy(nm_ifname, ifname, strlen(ifname));
     strncpy(nm_nmr.nr_name, ifname, strlen(ifname));
@@ -844,16 +847,18 @@ netmap::_create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw)
         return -1;
     }
 
-    char* mem = (char*)mmap(NULL, nmr.nr_memsize,
-            PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-    if (mem == MAP_FAILED) {
+    if (netmap_mem == NULL) {
+        netmap_mem= (char*)mmap(NULL, nmr.nr_memsize,
+                PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+    }
+    if (netmap_mem == MAP_FAILED) {
         perror("mmap");
         MESG("unable to mmap");
         close(fd);
         return -1;
     }
 
-    nmif = NETMAP_IF(mem, nmr.nr_offset);
+    nmif = NETMAP_IF(netmap_mem, nmr.nr_offset);
     struct netmap_ring* tmp_ring;
 
     if (ring == NULL) {
@@ -863,9 +868,11 @@ netmap::_create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw)
         } else if (rxtx == NETMAP_RX) {
             tmp_ring = NETMAP_RXRING(nmif, qnum);
         } else {
+            /*
             if (munmap(mem, nmr.nr_memsize) != 0) {
                 PERROR("munmap");
             }
+            */
             MESG("class broken..??");
             close(fd);
             return -1;
@@ -878,9 +885,11 @@ netmap::_create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw)
         } else if (rxtx == NETMAP_RX) {
             *ring = NETMAP_RXRING(nmif, qnum);
         } else {
+            /*
             if (munmap(mem, nmr.nr_memsize) != 0) {
                 PERROR("munmap");
             }
+            */
             MESG("class broken..??");
             close(fd);
             return -1;
@@ -893,7 +902,7 @@ netmap::_create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw)
         struct ring_info* mv = (struct ring_info*)malloc(sizeof(struct ring_info));
         mv->fd = fd;
         mv->ringid = qnum;
-        mv->map = mem;
+        mv->map = netmap_mem;
         if (ring == NULL) {
             mv->ring = tmp_ring;
         } else {
@@ -915,7 +924,7 @@ netmap::_create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw)
         struct ring_info* mv = (struct ring_info*)malloc(sizeof(struct ring_info));
         mv->fd = fd;
         mv->ringid = qnum;
-        mv->map = mem;
+        mv->map = netmap_mem;
         if (ring == NULL) {
             mv->ring = tmp_ring;
         } else {

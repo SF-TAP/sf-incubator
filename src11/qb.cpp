@@ -24,6 +24,7 @@
 #endif
 
 extern bool debug;
+extern pthread_mutex_t debug_mutex;
 
 bool bind_cpu(int cpu, int reverse);
 
@@ -62,6 +63,8 @@ int
 main(int argc, char** argv)
 {
     debug = false;
+    pthread_mutex_init(&debug_mutex, NULL);
+
     int opt;
     int option_index;
     std::string opt_l;
@@ -408,9 +411,11 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
     fd = nm->create_nmring_hard_rx(&rxring, ringid);
 
     if (debug) {
+        pthread_mutex_lock(&debug_mutex);
         printf("fd    :%d\n", fd);
         printf("ringid:%d\n", ringid);
         printf("rxring:%p\n", rxring);
+        pthread_mutex_unlock(&debug_mutex);
     }
 
     //struct ether_header* eth;
@@ -437,6 +442,7 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
 
 
     if (debug) {
+        pthread_mutex_lock(&debug_mutex);
         int cur = 0;
         for (auto it : v_tap_info) {
             std::cout << "tap" << cur << "_fd    :" << it.fd     << std::endl;
@@ -444,6 +450,7 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
             std::cout << "tap" << cur << "_ring  :" << it.ring   << std::endl;
             cur++;
         }
+        pthread_mutex_unlock(&debug_mutex);
     }
 
     uint32_t rx_avail = 0;
@@ -551,12 +558,14 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
     tx_fd = nm_tx->create_nmring_hard_tx(&txring, tx_ringid);
 
     if (debug) {
+        pthread_mutex_lock(&debug_mutex);
         printf("tx_pointer:%p\n", txring);
         printf("rx_pointer:%p\n", rxring);
         printf("tx_fd:%d\n", tx_fd);
         printf("rx_fd:%d\n", rx_fd);
         printf("tx_ringid:%d\n", tx_ringid);
         printf("rx_ringid:%d\n", rx_ringid);
+        pthread_mutex_unlock(&debug_mutex);
     }
 
     std::vector<struct tap_info> v_tap_info;
@@ -574,6 +583,7 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
     }
 
     if (debug) {
+        pthread_mutex_lock(&debug_mutex);
         int cur = 0;
         for (auto it : v_tap_info) {
             std::cout << "tap" << cur << "_fd    :" << it.fd     << std::endl;
@@ -581,6 +591,7 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
             std::cout << "tap" << cur << "_ring  :" << it.ring   << std::endl;
             cur++;
         }
+        pthread_mutex_unlock(&debug_mutex);
     }
 
     uint32_t rx_avail = 0;
