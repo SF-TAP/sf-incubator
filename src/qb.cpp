@@ -515,11 +515,12 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
 
                 if (tap_avail == 0) {
                     // XXX ToDo drop count
-                    ;
+                    ti->nm->tx_ring_unlock(ti->ringid);
+                    goto QB_TAP_SEP_SEND;
                 } else {
                     slot_swap(rxring, ti->ring);
                     ti->nm->next(ti->ring);
-                    tap_avail--;
+                    //tap_avail--;
                 }
 
                 ti->nm->tx_ring_unlock(ti->ringid);
@@ -530,6 +531,7 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
 
         }
 
+        QB_TAP_SEP_SEND:
         for (auto it : v_tap_info) {
             it.nm->tx_ring_lock(it.ringid);
             it.nm->txsync(it.fd, it.ringid);
@@ -625,14 +627,12 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
                 }
 
                 pkt_copy(rxring, it.ring, 0);
-
                 it.nm->next(it.ring);
-                tap_avail--;
                 it.nm->tx_ring_unlock(it.ringid);
             }
 
-            //slot_swap(rxring, txring);
-            pkt_copy(rxring, txring, 0);
+            slot_swap(rxring, txring);
+            //pkt_copy(rxring, txring, 0);
 
             nm_tx->next(txring);
             tx_avail--;
@@ -653,6 +653,8 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
 #else
 
     struct tap_info* ti;
+    int burst;
+    int selection;
     for (;;) {
 
         //nm_rx->rxsync(rx_fd, rx_ringid);
@@ -660,11 +662,9 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
         rx_avail = nm_rx->get_avail(rxring);
         tx_avail = nm_tx->get_avail(txring);
         
-        while (rx_avail > 0) {
+        burst = (rx_avail <= tx_avail) ?  rx_avail : tx_avail;
+        while (burst-- > 0) {
 
-            if (tx_avail == 0) break;
-
-            int selection;
             selection = interface_selector(rxring, v_tap_info, 1);
             if (selection != -1) {
                 ti = &v_tap_info.at(selection);
@@ -673,26 +673,22 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
 
                 if (tap_avail == 0) {
                     // XXX ToDo drop count
-                    ;
+                    ti->nm->tx_ring_unlock(ti->ringid);
+                    goto QB_FW_SEP_SEND;
                 } else {
                     pkt_copy(rxring, ti->ring, 0);
                     ti->nm->next(ti->ring);
-                    tap_avail--;
+                    ti->nm->tx_ring_unlock(ti->ringid);
                 }
 
-                ti->nm->tx_ring_unlock(ti->ringid);
             }
 
             slot_swap(rxring, txring);
-
             nm_tx->next(txring);
-            tx_avail--;
-
             nm_rx->next(rxring);
-            rx_avail--;
-
         }
             
+        QB_FW_SEP_SEND:
         nm_tx->txsync(tx_fd, tx_ringid);
         if(v_tap_info.size() != 0) {
             for (auto it : v_tap_info) {

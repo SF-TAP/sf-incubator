@@ -2,6 +2,8 @@
 #ifndef __netmap_hpp__
 #define __netmap_hpp__
 
+#define USE_NETMAP_API_11
+
 #include "common.hpp"
 
 #include <iostream>
@@ -29,12 +31,19 @@
 
 
 #include <net/if.h>
+#ifndef __linux__
 #include <net/if_dl.h>
+#endif
 #include <net/ethernet.h>
+
+#define NETMAP_WITH_LIBS
 
 #include <net/netmap.h>
 #include <net/netmap_user.h>
 
+
+char* netmap_mem = NULL;
+int netmap_mem_ref = 0;
 
 class netmap
 {
@@ -92,6 +101,7 @@ public:
     int get_rx_ring_info_fd(int ringid);
     char* get_rx_ring_info_map(int ringid);
     struct netmap_ring* get_rx_ring_info_ring(int ringid);
+    inline uint32_t get_avail(struct netmap_ring* ring);
 
     inline void tx_ring_lock(int ringid);
     inline void tx_ring_unlock(int ringid);
@@ -148,8 +158,13 @@ netmap::~netmap()
     for (it = tx_ring_info.begin(); it != tx_ring_info.end(); it++) {
         struct ring_info* tmp_value = it->second;
         if (tmp_value->map != NULL) {
-            if (munmap(tmp_value->map, nm_memsize) != 0) {
-                exit(EXIT_FAILURE);
+            if (netmap_mem_ref == 1) {
+                if (munmap(tmp_value->map, nm_memsize) != 0) {
+                    exit(EXIT_FAILURE);
+                }
+                netmap_mem_ref--;
+            } else {
+                netmap_mem_ref--;
             }
             tmp_value->map = NULL;
             close(tmp_value->fd);
@@ -197,7 +212,7 @@ netmap::open_if(const char* ifname)
         return false;
     }
     memset(&nm_nmr, 0, sizeof(nm_nmr));
-    nm_version = 4;
+    nm_version = NETMAP_API;
     nm_nmr.nr_version = nm_version;
     strncpy(nm_ifname, ifname, strlen(ifname));
     strncpy(nm_nmr.nr_name, ifname, strlen(ifname));
@@ -214,6 +229,7 @@ netmap::open_if(const char* ifname)
     close(fd);
 
     //getmac
+#ifndef __linux__
     struct ifaddrs *ifs;
     struct ifaddrs *ifp;
     struct sockaddr_dl* dl;
@@ -242,9 +258,33 @@ netmap::open_if(const char* ifname)
         }
     }
     freeifaddrs(ifs);
+#else
+    {
+        int fd;
+        struct ifreq ifr;
+        memset(&ifr, 0, sizeof(ifr));
 
+        fd = socket(AF_INET, SOCK_DGRAM, 0);
+        ifr.ifr_addr.sa_family = AF_INET;
+        strncpy(ifr.ifr_name, ifname, strlen(ifname));
+        ioctl(fd, SIOCGIFHWADDR, &ifr);
+        close(fd);
+        memcpy(&nm_mac, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
+    }
+#endif
+
+#ifndef __linux__
     nm_oui = nm_mac.octet[0]<<16 | nm_mac.octet[1]<<8 | nm_mac.octet[2];
     nm_bui = nm_mac.octet[3]<<16 | nm_mac.octet[4]<<8 | nm_mac.octet[5];
+#else
+    nm_oui = nm_mac.ether_addr_octet[0]<<16 | 
+             nm_mac.ether_addr_octet[1]<<8  |
+             nm_mac.ether_addr_octet[2];
+    nm_bui = nm_mac.ether_addr_octet[3]<<16 |
+             nm_mac.ether_addr_octet[4]<<8  |
+             nm_mac.ether_addr_octet[5];
+#endif
+
     if (debug) printf("%s_mac_address->%06x:%06x\n", nm_ifname, nm_oui, nm_bui);
     if (nm_oui == 0 && nm_bui == 0) {
         return false;
@@ -407,7 +447,7 @@ netmap::get_slot(struct netmap_ring* ring)
 inline void
 netmap::next(struct netmap_ring* ring)
 {
-    ring->cur = NETMAP_RING_NEXT(ring, ring->cur);
+    ring->head = ring->cur = nm_ring_next (ring, ring->cur);
     return;
 }
 
@@ -416,6 +456,12 @@ netmap::get_eth(struct netmap_ring* ring)
 {
     struct netmap_slot* slot = get_slot(ring);
     return (struct ether_header*)NETMAP_BUF(ring, slot->buf_idx);
+}
+
+inline uint32_t
+netmap::get_avail(struct netmap_ring* ring)
+{
+    return nm_ring_space(ring);
 }
 
 inline size_t
@@ -496,25 +542,19 @@ inline void
 netmap::tx_ring_lock(int ringid)
 {
     while (__sync_lock_test_and_set(&tx_ring_info[ringid]->lock, 1)) {
+        //Compare-And-Swap(CAS)の命令は重いので単にループするだけのwhile
+        //を挟むことで，CASのループを少なくする．
+        //アダプティブロックにするならCAS-loop/while(lock)の回数を決めて
+        //sched_yield()を呼ぶこと．
         while (tx_ring_info[ringid]->lock) {};
     }
 
     /*
-    adaptive_lock;
-    const adaptive_count = 100;
-    int lock_cond = 0;
     while (__sync_bool_compare_and_swap(&tx_ring_info[ringid]->lock, 0, 1) == 0) {
         asm volatile("lfence" ::: "memory");
-        while (tx_ring_info[ringid]->lock) {
-            if (cond < adaptive_count) { 
-                loc_cond++;
-            } else {
-                sched_yield();
-            }
-        };
+        sched_yield();
     }
     */
-
     return;
 }
 
@@ -527,7 +567,6 @@ netmap::tx_ring_unlock(int ringid)
     tx_ring_info[ringid]->lock = 0;
     asm volatile("sfence" ::: "memory");
     */
-
     return;
 }
 
@@ -535,22 +574,17 @@ inline void
 netmap::rx_ring_lock(int ringid)
 {
     while (__sync_lock_test_and_set(&rx_ring_info[ringid]->lock, 1)) {
+        //Compare-And-Swap(CAS)の命令は重いので単にループするだけのwhile
+        //を挟むことで，CASのループを少なくする．
+        //アダプティブロックにするならCAS-loop/while(lock)の回数を決めて
+        //sched_yield()を呼ぶこと．
         while (rx_ring_info[ringid]->lock) {};
     }
 
     /*
-    adaptive_lock;
-    const adaptive_count = 100;
-    int lock_cond = 0;
     while (__sync_bool_compare_and_swap(&rx_ring_info[ringid]->lock, 0, 1) == 0) {
         asm volatile("lfence" ::: "memory");
-        while (tx_ring_info[ringid]->lock) {
-            if (cond < adaptive_count) { 
-                loc_cond++;
-            } else {
-                sched_yield();
-            }
-        };
+        sched_yield();
     }
     */
     return;
@@ -645,6 +679,7 @@ netmap::get_rx_qnum()
 bool
 netmap::set_promisc()
 {
+#ifndef __linux__
     int fd;
     struct ifreq ifr;
     memset(&ifr, 0, sizeof(ifr));
@@ -680,11 +715,44 @@ netmap::set_promisc()
     close(fd);
 
     return true;
+
+#else
+
+    int fd;
+    struct ifreq ifr;
+    char* ifname = get_ifname();
+    memset(&ifr, 0, sizeof(ifr));
+
+    fd = socket (AF_INET, SOCK_DGRAM, 0);
+    strncpy (ifr.ifr_name, ifname, strlen(ifname));
+
+    if (ioctl (fd, SIOCGIFFLAGS, &ifr) != 0) {
+        PERROR("ioctl");
+        MESG("failed to get interface status");
+        close(fd);
+        return false;
+    }
+
+    ifr.ifr_flags |= IFF_PROMISC;
+
+    if (ioctl (fd, SIOCSIFFLAGS, &ifr) != 0) {
+        PERROR("ioctl");
+        MESG("failed to set interface status");
+        close(fd);
+        return false;
+    }
+
+    close(fd);
+    return true;
+
+#endif
 }
 
 bool
 netmap::unset_promisc()
 {
+#ifndef __linux__
+
     int fd;
     struct ifreq ifr;
 
@@ -708,6 +776,37 @@ netmap::unset_promisc()
         return false;
     }
     close(fd);
+
+#else
+
+    int fd;
+    struct ifreq ifr;
+    char* ifname = get_ifname();
+    memset(&ifr, 0, sizeof(ifr));
+
+    fd = socket (AF_INET, SOCK_DGRAM, 0);
+    strncpy (ifr.ifr_name, ifname, strlen(ifname));
+
+    if (ioctl (fd, SIOCGIFFLAGS, &ifr) != 0) {
+        PERROR("ioctl");
+        MESG("failed to get interface status");
+        close(fd);
+        return false;
+    }
+
+    ifr.ifr_flags &= ~IFF_PROMISC;
+
+    if (ioctl (fd, SIOCSIFFLAGS, &ifr) != 0) {
+        PERROR("ioctl");
+        MESG("failed to set interface status");
+        close(fd);
+        return false;
+    }
+
+    close(fd);
+    return true;
+
+#endif
     
     return true;
 }
@@ -735,10 +834,25 @@ netmap::_create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw)
     strncpy (nmr.nr_name, nm_ifname, strlen(nm_ifname));
     nmr.nr_version = nm_version;
     nmr.nr_ringid = (swhw | qnum);
-    //printf("ringid:%x\n", nmr.nr_ringid);
-    // swhw : soft ring or hard ring
     //NETMAP_HW_RING 0x4000
     //NETMAP_SW_RING 0x2000
+#if NETMAP_API > 4
+    //nmr.nr_ringid = nmr.nr_ringid | NETMAP_NO_TX_POLL | NETMAP_DO_RX_POLL;
+    
+    if (netmap_mem == NULL) {
+        nmr.nr_ringid = nmr.nr_ringid;
+    } else {
+        nmr.nr_ringid = nmr.nr_ringid | NM_OPEN_NO_MMAP;
+        //nmr.nr_arg2 = NM_OPEN_NO_MMAP;
+    }
+    if (swhw == NETMAP_SW_RING) {
+        nmr.nr_flags = NR_REG_SW;
+    } else if (swhw == NETMAP_HW_RING) {
+        nmr.nr_flags = NR_REG_ONE_NIC;
+    } else {
+        nmr.nr_flags = 0;
+    }
+#endif
 
     if (ioctl(fd, NIOCREGIF, &nmr) < 0) {
         perror("ioctl");
@@ -747,17 +861,21 @@ netmap::_create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw)
         return -1;
     }
 
-    char* mem = (char*)mmap(NULL, nmr.nr_memsize,
-            PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-    if (debug) printf("mem:%p\n", mem);
-    if (mem == MAP_FAILED) {
+    if (netmap_mem == NULL) {
+        netmap_mem= (char*)mmap(NULL, nmr.nr_memsize,
+                PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+    } 
+    if (netmap_mem == MAP_FAILED) {
         perror("mmap");
         MESG("unable to mmap");
         close(fd);
+        netmap_mem_ref--;
         return -1;
+    } else {
+        netmap_mem_ref++;
     }
 
-    nmif = NETMAP_IF(mem, nmr.nr_offset);
+    nmif = NETMAP_IF(netmap_mem, nmr.nr_offset);
     struct netmap_ring* tmp_ring;
 
     if (ring == NULL) {
@@ -767,9 +885,11 @@ netmap::_create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw)
         } else if (rxtx == NETMAP_RX) {
             tmp_ring = NETMAP_RXRING(nmif, qnum);
         } else {
+            /*
             if (munmap(mem, nmr.nr_memsize) != 0) {
                 PERROR("munmap");
             }
+            */
             MESG("class broken..??");
             close(fd);
             return -1;
@@ -782,9 +902,11 @@ netmap::_create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw)
         } else if (rxtx == NETMAP_RX) {
             *ring = NETMAP_RXRING(nmif, qnum);
         } else {
+            /*
             if (munmap(mem, nmr.nr_memsize) != 0) {
                 PERROR("munmap");
             }
+            */
             MESG("class broken..??");
             close(fd);
             return -1;
@@ -797,7 +919,7 @@ netmap::_create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw)
         struct ring_info* mv = (struct ring_info*)malloc(sizeof(struct ring_info));
         mv->fd = fd;
         mv->ringid = qnum;
-        mv->map = mem;
+        mv->map = netmap_mem;
         if (ring == NULL) {
             mv->ring = tmp_ring;
         } else {
@@ -819,7 +941,7 @@ netmap::_create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw)
         struct ring_info* mv = (struct ring_info*)malloc(sizeof(struct ring_info));
         mv->fd = fd;
         mv->ringid = qnum;
-        mv->map = mem;
+        mv->map = netmap_mem;
         if (ring == NULL) {
             mv->ring = tmp_ring;
         } else {
