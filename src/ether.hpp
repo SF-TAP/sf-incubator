@@ -3,6 +3,7 @@
 #include <iostream>
 #include <vector>
 #include <set>
+#include <regex.h>
 
 #include <sys/socket.h>
 #include <net/ethernet.h>
@@ -11,6 +12,8 @@
 #endif
 
 #include <ifaddrs.h>
+
+#define ETHER_ADDR_REGEX "(^[0-9A-F][0-9A-F]:[0-9A-F][0-9A-F]:[0-9A-F][0-9A-F]:[0-9A-F][0-9A-F]:[0-9A-F][0-9A-F]:[0-9A-F][0-9A-F]$)"
  
 // Get Destination Address
 #define ETH_GDA(eth) \
@@ -36,6 +39,23 @@ swap_mac(struct ether_addr* mac1, struct ether_addr* mac2)
     *mac1 = *mac2;
     *mac2 = tmp;
     return;
+}
+
+bool
+is_ether_addr(char *addr)
+{
+    regex_t regex;
+
+    if (regcomp(&regex, ETHER_ADDR_REGEX, REG_EXTENDED | REG_NOSUB | REG_ICASE) != 0) {
+        return false;
+    }
+
+    if (regexec(&regex, addr, 0, NULL, 0) == 0) {
+        regfree(&regex);
+        return true;
+    }
+    regfree(&regex);
+    return false;
 }
 
 void
@@ -92,7 +112,6 @@ bool is_exist_if(std::vector<std::string>& v, std::string& s)
 std::vector<std::string>
 get_ifname_list()
 {
-    //getmac
     std::vector<std::string> v;
 
 #ifndef __linux__
@@ -121,6 +140,7 @@ get_ifname_list()
     for (it = s.begin(); it != s.end(); it++) {
         v.push_back(*it);
     }
+
 #else
 
     std::set<std::string> s;

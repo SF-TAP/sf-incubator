@@ -4,15 +4,20 @@
 #include <vector>
 #include <algorithm>
 
+#include <getopt.h>
 #include <unistd.h>
 #include <pthread.h>
 
+#include <sys/types.h>
+#include <sys/socket.h>
+
 #ifndef __linux__
 #include <pthread_np.h>
+#include <net/ethernet.h>
+#else
+#include <netinet/ether.h>
 #endif
 
-#include <getopt.h>
-#include <net/ethernet.h>
 
 #include "common.hpp"
 #include "netmap.hpp"
@@ -57,6 +62,7 @@ struct tap_info {
     int ringid;
     struct netmap_ring* ring;
     netmap* nm;
+    //struct ether_addr mac_dest;
 };
 
 int
@@ -72,6 +78,8 @@ main(int argc, char** argv)
     std::string opt_t;
 
     std::vector<std::string> tap_list;
+    std::vector<struct ether_addr> dmac_list;
+
     std::vector<std::string> if_list = get_ifname_list();
 
     struct option long_options[] = {
@@ -154,10 +162,33 @@ main(int argc, char** argv)
         exit(EXIT_FAILURE);
     }
 
+    /*
     tap_list = split(opt_t, ",");
     if (opt_t.size() == 0) {
         //usage(argv[0]);
         //exit(EXIT_FAILURE);
+    }
+    */
+    for (auto i : split(opt_t, ",")) {
+        //std::cout << i << std::endl;
+        auto v = split(i, "@");
+        size_t s = v.size();
+        if (s == 1) {
+            tap_list.push_back(v[0]);
+            uint8_t ea_tmp[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+            dmac_list.push_back(*(struct ether_addr*)&ea_tmp);
+        } else if (s == 2) {
+            tap_list.push_back(v[0]);
+            if (is_ether_addr((char*)v[1].c_str())) {
+                dmac_list.push_back(*ether_aton(v[1].c_str()));
+            } else {
+                MESG("-t is format error (ether_addr)");
+                exit(EXIT_FAILURE);
+            }
+        } else {
+            MESG("-t is format error");
+            exit(EXIT_FAILURE);
+        }
     }
 
     for (auto it : tap_list) {
@@ -177,6 +208,7 @@ main(int argc, char** argv)
         exit(EXIT_FAILURE);
     }
 
+    /*
     std::vector<netmap*> v_nm_t;
     for (auto it : tap_list) {
         netmap* nm_tmp = new netmap();
@@ -184,6 +216,18 @@ main(int argc, char** argv)
         for (int i=0; i<nm_tmp->get_tx_qnum(); i++) {
             nm_tmp->create_nmring_hard_tx(NULL, i);
         }
+        v_nm_t.push_back(nm_tmp);
+    }
+    */
+    std::vector<netmap*> v_nm_t;
+    size_t s = tap_list.size();
+    for (int j = 0; j < s; j++) {
+        netmap* nm_tmp = new netmap();
+        nm_tmp->open_if(tap_list[j]);
+        for (int i=0; i<nm_tmp->get_tx_qnum(); i++) {
+            nm_tmp->create_nmring_hard_tx(NULL, i);
+        }
+        nm_tmp->set_mac_dest(&dmac_list[j]);
         v_nm_t.push_back(nm_tmp);
     }
 
@@ -436,6 +480,7 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
         ti.fd = it->get_tx_ring_info_fd(ti.ringid);
         ti.ring = it->get_tx_ring_info_ring(ti.ringid);
         ti.nm = it;
+        //ti.mac_dest = *(it->get_mac_dest());
         v_tap_info.push_back(ti);
         memset(&ti, 0, sizeof(ti));
     }
@@ -498,6 +543,8 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
 #else
 
     struct tap_info* ti;
+    struct ether_addr* mac;
+    struct ether_header* eth;
     for (;;) {
 
         //nm_rx->rxsync(rx_fd, rx_ringid);
@@ -519,6 +566,14 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
                     goto QB_TAP_SEP_SEND;
                 } else {
                     slot_swap(rxring, ti->ring);
+                    // for switch ---------------------
+                    eth = ti->nm->get_eth(ti->ring);
+                    mac = ETH_GDA(eth);
+                    *mac = *ti->nm->get_mac_dest();
+                    mac = ETH_GSA(eth);
+                    *mac = *ti->nm->get_mac();
+                    // --------------------------------
+
                     ti->nm->next(ti->ring);
                     //tap_avail--;
                 }
@@ -655,6 +710,8 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
     struct tap_info* ti;
     int burst;
     int selection;
+    struct ether_header* eth;
+    struct ether_addr* mac;
     for (;;) {
 
         //nm_rx->rxsync(rx_fd, rx_ringid);
@@ -677,6 +734,15 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
                     goto QB_FW_SEP_SEND;
                 } else {
                     pkt_copy(rxring, ti->ring, 0);
+
+                    // for switch ---------------------
+                    eth = ti->nm->get_eth(ti->ring);
+                    mac = ETH_GDA(eth);
+                    *mac = *ti->nm->get_mac_dest();
+                    mac = ETH_GSA(eth);
+                    *mac = *ti->nm->get_mac();
+                    //---------------------------------
+
                     ti->nm->next(ti->ring);
                     ti->nm->tx_ring_unlock(ti->ringid);
                 }
@@ -704,6 +770,7 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
 
     return;
 }
+
 
 static inline void
 slot_swap(struct netmap_ring* rxring, struct netmap_ring* txring)

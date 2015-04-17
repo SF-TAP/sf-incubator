@@ -150,4 +150,17 @@ split(const std::string& src, const char *c)
     return retval;
 }
 
+/*
+uint64_t dwcas(uint64_t* adr, uint64_t nval, uint64_t cmp)
+{
+  uint64_t old;
+  __asm__ __volatile__(
+    "lock cmpxchg8b %0\n\t"
+    : "=a" (old) ,"+m" (*adr)
+    : "d" ((uint32_t)(cmp >> 32)), "a" ((uint32_t)(cmp & 0xffffffff)),
+      "c" ((uint32_t)(nval >> 32)), "b" ((uint32_t)(nval & 0xffffffff))
+    : "cc");
+}
+*/
+
 #endif //__common_hpp__

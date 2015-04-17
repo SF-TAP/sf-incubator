@@ -89,6 +89,8 @@ public:
     uint16_t get_tx_qnum();
     uint16_t get_rx_qnum();
     struct ether_addr* get_mac();
+    void set_mac_dest(struct ether_addr* mac);
+    struct ether_addr* get_mac_dest();
     inline void next(struct netmap_ring* ring);
     inline size_t get_ethlen(struct netmap_ring* ring);
     inline void set_ethlen(struct netmap_ring* ring, size_t size);
@@ -116,6 +118,7 @@ private:
     uint32_t nm_memsize;
     char nm_ifname[IFNAMSIZ];
     struct ether_addr nm_mac;
+    struct ether_addr nm_mac_dest;
     uint32_t nm_oui;
     uint32_t nm_bui;
 #ifdef POLL
@@ -126,6 +129,7 @@ private:
     pthread_mutex_t lock_ring_info;
     std::map<int, struct ring_info*> tx_ring_info;
     std::map<int, struct ring_info*> rx_ring_info;
+
 
     int _create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw);
 };
@@ -149,6 +153,8 @@ netmap::netmap()
     pthread_mutexattr_init(&attr);
     pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ADAPTIVE_NP);
     pthread_mutex_init(&lock_ring_info, &attr);
+
+    memset(&nm_mac_dest, 0xff, sizeof(struct ether_addr));
 }
 
 netmap::~netmap()
@@ -615,6 +621,19 @@ inline struct ether_addr*
 netmap::get_mac()
 {
     return &nm_mac;
+}
+
+inline void
+netmap::set_mac_dest(struct ether_addr* mac)
+{
+    nm_mac_dest = *mac;
+    return;
+}
+
+inline struct ether_addr*
+netmap::get_mac_dest()
+{
+    return &nm_mac_dest;
 }
 
 
