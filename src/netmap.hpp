@@ -62,7 +62,6 @@ public:
         volatile int lock;
     };
 
-
     // control methods
     bool open_if(const std::string& ifname);
     bool open_if(const char* ifname);
@@ -129,7 +128,6 @@ private:
     pthread_mutex_t lock_ring_info;
     std::map<int, struct ring_info*> tx_ring_info;
     std::map<int, struct ring_info*> rx_ring_info;
-
 
     int _create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw);
 };

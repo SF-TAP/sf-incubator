@@ -5,7 +5,7 @@ all: separator tap getinfo
 INCLUDE:="-I../../netmap/sys"
 
 separator: qb.cpp netmap.hpp common.hpp
-	c++ ${INCLUDE} -O3 -std=c++11 -Wall -Wno-write-strings -Wno-unused-variable -Wno-unused-function -DPOLL -DDEBUG ./qb.cpp -o qb-separator -lpthread
+	c++ ${INCLUDE} -O3 -std=c++11 -Wall -Wno-write-strings -Wno-unused-variable -Wno-unused-function -DDEBUG -DPOLL ./qb.cpp -o qb-separator -lpthread
 .PHONY : separator
 
 tap: qb.cpp netmap.hpp common.hpp ether.hpp

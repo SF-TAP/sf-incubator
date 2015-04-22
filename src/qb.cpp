@@ -47,6 +47,7 @@ slot_swap(struct netmap_ring* rxring, struct netmap_ring* txring);
 static inline void
 pkt_copy(struct netmap_ring* rxring, struct netmap_ring* txring, int flag);
 
+bool filter(struct netmap_ring* ring);
 void usage(char* prog_name);
 
 struct thread_param {
@@ -528,7 +529,6 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
             }
 
             nm->next(rxring);
-            rx_avail--;
 
         }
 
@@ -542,6 +542,7 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
 
 #else
 
+    int selection;
     struct tap_info* ti;
     struct ether_addr* mac;
     struct ether_header* eth;
@@ -553,7 +554,10 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
 
         while (rx_avail > 0) {
 
-            int selection;
+            if (filter(rxring)) { 
+                nm->next(rxring);
+                continue;
+            }
             selection = interface_selector(rxring, v_tap_info, 1);
             if (selection != -1) {
                 ti = &v_tap_info.at(selection);
@@ -582,7 +586,6 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
             }
 
             nm->next(rxring);
-            rx_avail--;
 
         }
 
@@ -657,6 +660,7 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
 
 #ifdef FULLTAP
 
+    int burst;
     for (;;) {
 
         //nm_rx->rxsync(rx_fd, rx_ringid);
@@ -664,9 +668,8 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
         rx_avail = nm_rx->get_avail(rxring);
         tx_avail = nm_tx->get_avail(txring);
 
-        while (rx_avail > 0) {
-
-            if (tx_avail == 0) break;
+        burst = (rx_avail <= tx_avail) ?  rx_avail : tx_avail;
+        while (burst-- > 0) {
 
             for (auto it : v_tap_info) {
                 it.nm->tx_ring_lock(it.ringid);
@@ -690,10 +693,7 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
             //pkt_copy(rxring, txring, 0);
 
             nm_tx->next(txring);
-            tx_avail--;
-
             nm_rx->next(rxring);
-            rx_avail--;
         }
 
         nm_tx->txsync(tx_fd, tx_ringid);
@@ -722,6 +722,11 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
         burst = (rx_avail <= tx_avail) ?  rx_avail : tx_avail;
         while (burst-- > 0) {
 
+            // for llc (stp and so on..)
+            if (filter(rxring)) {
+                nm_rx->next(rxring);
+                continue; 
+            }
             selection = interface_selector(rxring, v_tap_info, 1);
             if (selection != -1) {
                 ti = &v_tap_info.at(selection);
@@ -863,6 +868,22 @@ pkt_copy(struct netmap_ring* rxring, struct netmap_ring* txring, int flag)
 
     }
     return;
+}
+
+inline bool
+filter(struct netmap_ring* ring) {
+        struct netmap_slot* slot = 
+             ((netmap_slot*)&ring->slot[ring->cur]);
+        struct ether_header* eth =
+            (struct ether_header*)(NETMAP_BUF(ring, slot->buf_idx));
+
+        //printf("%04x\n", htons(eth->ether_type));
+        //printf("%04x\n", htons(0xDC05));
+        if (eth->ether_type > 0xDC05) { 
+            return false;
+        } else {
+            return false;
+        }
 }
 
 void
