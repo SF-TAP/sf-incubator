@@ -48,7 +48,7 @@ static inline void
 pkt_copy(struct netmap_ring* rxring, struct netmap_ring* txring, int flag);
 
 #ifdef STP
-bool filter(struct netmap_ring* ring);
+bool llc_filter(struct netmap_ring* ring);
 #endif
 
 void usage(char* prog_name);
@@ -557,9 +557,8 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
 
         while (rx_avail > 0) {
 
-
 #ifdef STP
-            if (filter(rxring)) { 
+            if (__builtin_expect(!!(llc_filter(rxring)), 0)) { 
                 nm->next(rxring);
                 continue;
             }
@@ -729,7 +728,7 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
         while (burst-- > 0) {
 
 #ifdef STP
-            if (filter(rxring)) {
+            if (__builtin_expect(!!(llc_filter(rxring)), 0)) { 
                 nm_rx->next(rxring);
                 continue; 
             }
@@ -879,7 +878,7 @@ pkt_copy(struct netmap_ring* rxring, struct netmap_ring* txring, int flag)
 
 #ifdef STP
 inline bool
-filter(struct netmap_ring* ring) {
+llc_filter(struct netmap_ring* ring) {
         struct netmap_slot* slot =
              ((netmap_slot*)&ring->slot[ring->cur]);
         struct ether_header* eth =
