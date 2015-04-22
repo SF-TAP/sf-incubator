@@ -47,7 +47,10 @@ slot_swap(struct netmap_ring* rxring, struct netmap_ring* txring);
 static inline void
 pkt_copy(struct netmap_ring* rxring, struct netmap_ring* txring, int flag);
 
+#ifdef STP
 bool filter(struct netmap_ring* ring);
+#endif
+
 void usage(char* prog_name);
 
 struct thread_param {
@@ -554,10 +557,13 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
 
         while (rx_avail > 0) {
 
+
+#ifdef STP
             if (filter(rxring)) { 
                 nm->next(rxring);
                 continue;
             }
+#endif
             selection = interface_selector(rxring, v_tap_info, 1);
             if (selection != -1) {
                 ti = &v_tap_info.at(selection);
@@ -722,11 +728,12 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
         burst = (rx_avail <= tx_avail) ?  rx_avail : tx_avail;
         while (burst-- > 0) {
 
-            // for llc (stp and so on..)
+#ifdef STP
             if (filter(rxring)) {
                 nm_rx->next(rxring);
                 continue; 
             }
+#endif
             selection = interface_selector(rxring, v_tap_info, 1);
             if (selection != -1) {
                 ti = &v_tap_info.at(selection);
@@ -870,21 +877,22 @@ pkt_copy(struct netmap_ring* rxring, struct netmap_ring* txring, int flag)
     return;
 }
 
+#ifdef STP
 inline bool
 filter(struct netmap_ring* ring) {
-        struct netmap_slot* slot = 
+        struct netmap_slot* slot =
              ((netmap_slot*)&ring->slot[ring->cur]);
         struct ether_header* eth =
             (struct ether_header*)(NETMAP_BUF(ring, slot->buf_idx));
 
-        //printf("%04x\n", htons(eth->ether_type));
-        //printf("%04x\n", htons(0xDC05));
-        if (eth->ether_type > 0xDC05) { 
+        uint16_t type = htons(eth->ether_type);
+        if (__builtin_expect(!!(type>=0x05DC), 1)) {
             return false;
         } else {
-            return false;
+            return true;
         }
 }
+#endif
 
 void
 usage(char* prog_name)
