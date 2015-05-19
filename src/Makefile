@@ -18,11 +18,11 @@ tap: qb.cpp netmap.hpp common.hpp ether.hpp
 .PHONY : tap
 
 separator_debug: qb.cpp netmap.hpp common.hpp
-	c++ ${INCLUDE} -g -std=c++11 -Wall -Wno-write-strings -Wno-unused-variable -Wno-unused-function -DDEBUG -DPOLL -DDROPLLC -DTAPSW ./qb.cpp -o qb-separator -lpthread
+	c++ ${INCLUDE} -g -std=c++11 -Wall -Wno-write-strings -Wno-unused-variable -Wno-unused-function -DDEBUG -DPOLL -DDROPLLC -DTAPSW ./qb.cpp -o qb-separator_debug -lpthread
 .PHONY : separator
 
 tap_debug: qb.cpp netmap.hpp common.hpp ether.hpp
-	c++ ${INCLUDE} -g -std=c++11 -Wall -Wno-write-strings -Wno-unused-variable -Wno-unused-function -DDEBUG -DFULLTAP -DPOLL -DDROPLLC -DTAPSW ./qb.cpp -o qb-tap -lpthread
+	c++ ${INCLUDE} -g -std=c++11 -Wall -Wno-write-strings -Wno-unused-variable -Wno-unused-function -DDEBUG -DFULLTAP -DPOLL -DDROPLLC -DTAPSW ./qb.cpp -o qb-tap_debug -lpthread
 .PHONY : tap
 
 getinfo: getinfo.c
@@ -30,5 +30,5 @@ getinfo: getinfo.c
 .PHONY : getinfo
 
 clean:
-	rm -rf qb-separator qb-tap getinfo
+	rm -rf qb-separator qb-tap getinfo qb-separator_debug qb-tap_debug
 .PHONY : clean
