@@ -513,7 +513,7 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
 
         rx_avail = nm->get_avail(rxring);
 
-        while (rx_avail > 0) {
+        while (rx_avail-- > 0) {
 
 #ifdef DROPLLC
             if (__builtin_expect(!!(llc_filter(rxring)), 0)) { 
@@ -562,7 +562,7 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
         nm->rxsync_block(fd);
         rx_avail = nm->get_avail(rxring);
 
-        while (rx_avail > 0) {
+        while (rx_avail-- > 0) {
 
 #ifdef DROPLLC
             if (__builtin_expect(!!(llc_filter(rxring)), 0)) { 
