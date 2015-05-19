@@ -330,7 +330,6 @@ interface_selector(struct netmap_ring* ring,
 
         case ETHERTYPE_VLAN:
         {
-            
             selection = 
             next_vlan(NEXTHDR(hdrptr, sizeof(struct ether_header)), flag);
             break;
