@@ -557,6 +557,8 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
 
         while (rx_avail > 0) {
 
+            //flag:0 L3base separator
+            //flag:1 L4base separator
             selection = interface_selector(rxring, v_tap_info, 1);
             if (selection != -1) {
                 ti = &v_tap_info.at(selection);
