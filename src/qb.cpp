@@ -515,6 +515,13 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
 
         while (rx_avail > 0) {
 
+#ifdef DROPLLC
+            if (__builtin_expect(!!(llc_filter(rxring)), 0)) { 
+                nm->next(rxring);
+                continue; 
+            }
+#endif
+
             for (auto it : v_tap_info) {
                 it.nm->tx_ring_lock(it.ringid);
 
@@ -557,6 +564,12 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
 
         while (rx_avail > 0) {
 
+#ifdef DROPLLC
+            if (__builtin_expect(!!(llc_filter(rxring)), 0)) { 
+                nm->next(rxring);
+                continue; 
+            }
+#endif
             //flag:0 L3base separator
             //flag:1 L4base separator
             selection = interface_selector(rxring, v_tap_info, 1);
@@ -571,16 +584,15 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
                     goto QB_TAP_SEP_SEND;
                 } else {
                     slot_swap(rxring, ti->ring);
-                    // for switch ---------------------
+#ifdef TAPSW
                     eth = ti->nm->get_eth(ti->ring);
                     mac = ETH_GDA(eth);
                     *mac = *ti->nm->get_mac_dest();
                     mac = ETH_GSA(eth);
                     *mac = *ti->nm->get_mac();
-                    // --------------------------------
+#endif
 
                     ti->nm->next(ti->ring);
-                    //tap_avail--;
                 }
 
                 ti->nm->tx_ring_unlock(ti->ringid);
@@ -749,13 +761,13 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
                 } else {
                     pkt_copy(rxring, ti->ring, 0);
 
-                    // for switch ---------------------
+#ifdef TAPSW
                     eth = ti->nm->get_eth(ti->ring);
                     mac = ETH_GDA(eth);
                     *mac = *ti->nm->get_mac_dest();
                     mac = ETH_GSA(eth);
                     *mac = *ti->nm->get_mac();
-                    //---------------------------------
+#endif
 
                     ti->nm->next(ti->ring);
                     ti->nm->tx_ring_unlock(ti->ringid);

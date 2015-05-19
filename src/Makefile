@@ -1,16 +1,29 @@
 
-all: separator tap getinfo
+all: separator tap
 .PHONY : all
+
+debug: separator_debug tap_debug
+.PHONY : debug
 
 INCLUDE:="-I../../netmap/sys"
 
+#define_option TAPSW, DROPLLC POLL DEBUG
+
 separator: qb.cpp netmap.hpp common.hpp
-	c++ ${INCLUDE} -O3 -std=c++11 -Wall -Wno-write-strings -Wno-unused-variable -Wno-unused-function -DDROPLLC -DDEBUG -DPOLL ./qb.cpp -o qb-separator -lpthread
+	c++ ${INCLUDE} -O3 -std=c++11 -Wall -Wno-write-strings -Wno-unused-variable -Wno-unused-function -DPOLL -DDROPLLC -DTAPSW ./qb.cpp -o qb-separator -lpthread
 .PHONY : separator
 
 tap: qb.cpp netmap.hpp common.hpp ether.hpp
-	c++ ${INCLUDE} -O3 -std=c++11 -Wall -Wno-write-strings -Wno-unused-function -DFULLTAP -DPOLL -DDROPLLC -DDEBUG ./qb.cpp -o qb-tap -lpthread
+	c++ ${INCLUDE} -O3 -std=c++11 -Wall -Wno-write-strings -Wno-unused-variable -Wno-unused-function -DFULLTAP -DPOLL -DDROPLLC -DTAPSW ./qb.cpp -o qb-tap -lpthread
+.PHONY : tap
+
+separator_debug: qb.cpp netmap.hpp common.hpp
+	c++ ${INCLUDE} -g -std=c++11 -Wall -Wno-write-strings -Wno-unused-variable -Wno-unused-function -DDEBUG -DPOLL -DDROPLLC -DTAPSW ./qb.cpp -o qb-separator -lpthread
 .PHONY : separator
+
+tap_debug: qb.cpp netmap.hpp common.hpp ether.hpp
+	c++ ${INCLUDE} -g -std=c++11 -Wall -Wno-write-strings -Wno-unused-variable -Wno-unused-function -DDEBUG -DFULLTAP -DPOLL -DDROPLLC -DTAPSW ./qb.cpp -o qb-tap -lpthread
+.PHONY : tap
 
 getinfo: getinfo.c
 	cc -Wall ${INCLUDE} -g -o getinfo ./getinfo.c -I ../../netmap/sys/
