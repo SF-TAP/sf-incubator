@@ -1,20 +1,20 @@
 #!/bin/sh
 
-ifconfig -a | awk '/igb/{sub(":", "", $1); print $1}' | xargs > igbX
-ifconfig -a | awk '/ix[0-9]/{sub(":", "", $1); print $1}' | xargs > ixX
-ifconfig -a | awk '/em[0-9]/{sub(":", "", $1); print $1}' | xargs > emX
+ifconfig -a | awk '/igb/{sub(":", "", $1); print $1}' | xargs > /tmp/igbX
+ifconfig -a | awk '/ix[0-9]/{sub(":", "", $1); print $1}' | xargs > /tmp/ixX
+ifconfig -a | awk '/em[0-9]/{sub(":", "", $1); print $1}' | xargs > /tmp/emX
 
-for i in `cat igbX`
+for i in `cat /tmp/igbX`
 do
 	ifconfig ${i} -rxcsum -txcsum -rxcsum6 -txcsum6 -tso -tso6 -tso4 -lro up
 done
 
-for i in `cat ixX`
+for i in `cat /tmp/ixX`
 do
 	ifconfig ${i} -rxcsum -txcsum -rxcsum6 -txcsum6 -tso -tso6 -tso4 -lro up
 done
 
-for i in `cat emX`
+for i in `cat /tmp/emX`
 do
 	ifconfig ${i} -rxcsum -txcsum -rxcsum6 -txcsum6 -tso -tso6 -tso4 -lro up
 done
