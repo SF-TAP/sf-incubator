@@ -13,23 +13,9 @@
 #include "netmap.hpp"
 
 #define SELECTOR_HASH_SIZE 0xFFFF
+#define hash32to16(h) ((h>>16) & (h&0x0000ffff))
 #define NEXTHDR(ptr, count) (((uint8_t*)ptr)+count)
 
-#ifndef __linux__
-struct ip_hdr {
-    uint8_t  hl:4;
-    uint8_t  version:4;
-    uint8_t  tos;
-    uint16_t tot_len;
-    uint16_t id;
-    uint16_t frag_off;
-    uint8_t  ttl;
-    uint8_t  protocol;
-    uint16_t check;
-    uint32_t saddr;
-    uint32_t daddr;
-}  __packed __aligned(4);
-#else
 struct ip_hdr {
     uint8_t  hl:4;
     uint8_t  version:4;
@@ -43,24 +29,28 @@ struct ip_hdr {
     uint32_t saddr;
     uint32_t daddr;
 } __attribute__((packed, aligned(4)));
-#endif
 
 
 struct selector_info {
     uint32_t port;
 };
 
-struct selector_info* selector_info;
-size_t selector_hash_size;
+struct selector_info* selector_info4;
+struct selector_info* selector_info6;
 
 void
 selector_init(size_t hash_size)
 {
-    size_t memsize = sizeof(struct selector_info*) * hash_size;
-    selector_hash_size = hash_size;
-    selector_info =
+    size_t memsize = sizeof(struct selector_info*) * SELECTOR_HASH_SIZE;
+
+    selector_info4 =
         (struct selector_info*)malloc(memsize);
-    memset(selector_info, 0, memsize);
+    memset(selector_info4, 0, memsize);
+
+    selector_info6 =
+        (struct selector_info*)malloc(memsize);
+    memset(selector_info6, 0, memsize);
+
     return;
 }
 
@@ -87,7 +77,6 @@ get_ip4_transport_key(struct ip_hdr* iphdr)
                         retval = tcphdr->th_dport<<16 | tcphdr->th_sport;
                     }
                     goto SUCCESS_V4;
-                    break;
                 }
 
                 case IPPROTO_UDP:
@@ -100,19 +89,16 @@ get_ip4_transport_key(struct ip_hdr* iphdr)
                         retval = udphdr->uh_dport<<16 | udphdr->uh_sport;
                     }
                     goto SUCCESS_V4;
-                    break;
                 }
 
                 case IPPROTO_ICMP:
                 {
                     goto NONSUPPORT_V4;
-                    break;
                 }
 
                 default:
                 {
                     goto NONSUPPORT_V4;
-                    break;
                 }
             }
         } else {
@@ -131,7 +117,7 @@ get_ip4_transport_key(struct ip_hdr* iphdr)
                     hash = (iphdr->id)^
                            (iphdr->saddr)^
                            (iphdr->daddr);
-                    selector_info[hash/selector_hash_size].port = retval;
+                    selector_info4[hash32to16(hash)].port = retval;
                     goto SUCCESS_V4;
                 }
 
@@ -147,7 +133,7 @@ get_ip4_transport_key(struct ip_hdr* iphdr)
                     hash = (iphdr->id)^
                            (iphdr->saddr)^
                            (iphdr->daddr);
-                    selector_info[hash/selector_hash_size].port = retval;
+                    selector_info4[hash32to16(hash)].port = retval;
                     goto SUCCESS_V4;
                 }
 
@@ -168,15 +154,15 @@ get_ip4_transport_key(struct ip_hdr* iphdr)
             hash = (iphdr->id)^
                    (iphdr->saddr)^
                    (iphdr->daddr);
-            retval = selector_info[hash/selector_hash_size].port;
-            selector_info[hash/selector_hash_size].port = 0;
+            retval = selector_info4[hash32to16(hash)].port;
+            selector_info4[hash32to16(hash)].port = 0;
             goto SUCCESS_V4;
         } else {
             // offset on, MF on
             hash = (iphdr->id)^
                    (iphdr->saddr)^
                    (iphdr->daddr);
-            retval = selector_info[hash/selector_hash_size].port;
+            retval = selector_info4[hash32to16(hash)].port;
             goto SUCCESS_V4;
         }
     }
@@ -191,7 +177,9 @@ get_ip4_transport_key(struct ip_hdr* iphdr)
 inline uint32_t
 get_ip6_transport_key(struct ip6_hdr* ip6hdr)
 {
+    //ref: rfc2292.html
     uint32_t retval = 0;
+    uint32_t hash;
     switch (ip6hdr->ip6_nxt)
     {
         case IPPROTO_TCP:
@@ -205,6 +193,7 @@ get_ip6_transport_key(struct ip6_hdr* ip6hdr)
             }
             goto SUCCESS_V6;
         }
+
         case IPPROTO_UDP:
         {
             struct udphdr* udphdr
@@ -216,10 +205,81 @@ get_ip6_transport_key(struct ip6_hdr* ip6hdr)
             }
             goto SUCCESS_V6;
         }
-        case IPPROTO_ICMP:
+
+         /*
+          * IPv6 fragment option header detail
+          * 0                16               31
+          * +--------+-------+-----------+--+-+
+          * | nxthdr | rsrvd | f_offset  |rs|m|
+          * +--------+-------+-----------+--+-+
+          * |        32bit Identification     |
+          * +----------------+----------------+
+          * nexthdr     :  8bit of next header protorol
+          * reserved    :  8bit of xxx
+          * frag_offset : 13bit of fragment offset in 8-octet units
+          * rs          :  2bit of reserved flag bit
+          * m           :  1bit of fragment indication 1->more, 0->last
+          */
+        case IPPROTO_FRAGMENT:
+        /*
+        {
+            struct v6opt_f_hdr {
+                uint8_t next;
+                uint8_t reserve;
+                uint16_t offset:13;
+                uint16_t reserve_flag:2;
+                uint16_t m_flag:1;
+                uint32_t id;
+            } __attribute__((packed, aligned(4)));
+
+            struct v6opt_f_hdr* fhdr;
+                = (struct v6opt_f_hdr*)NEXTHDR(ip6hdr, sizeof(struct ip6_hdr));
+
+            switch (fhdr->next); 
+            {
+                case IPPROTO_TCP:
+                {
+                    if (frag_offset == 0) {
+                        struct tcphdr* tcphdr
+                            = (struct tcphdr*)NEXTHDR(fhdr, sizeof(struct v6opt_f_hdr));
+                        if (tcphdr->th_sport <= tcphdr->th_dport) {
+                            retval = tcphdr->th_sport<<16 | tcphdr->th_dport;
+                        } else {
+                            retval = tcphdr->th_dport<<16 | tcphdr->th_sport;
+                        }
+                        hash = xor6(ip6hdr->ip6_src) ^
+                               xor6(ip6hdr->ip6_dst) ^
+                               fhdr->id;
+                        selector_info6[hash32to16(hash)].port = retval;
+                        goto SUCCESS_V6;
+                    } else if () {
+                    }
+                    goto SUCCESS_V6;
+                }
+                case IPPROTO_UDP:
+                {
+                    goto NONSUPPORT_V6;
+                }
+                default:
+                {
+                    goto NONSUPPORT_V6;
+                }
+            }
+            goto NONSUPPORT_V6;
+        }
+        */
+
+        case IPPROTO_HOPOPTS:
+        case IPPROTO_ROUTING:
+        case IPPROTO_ESP:
+        case IPPROTO_AH:
+        case IPPROTO_NONE:
+        case IPPROTO_DSTOPTS:
+        case IPPROTO_ICMPV6:
         {
             goto NONSUPPORT_V6;
         }
+
         default:
         {
             goto NONSUPPORT_V6;

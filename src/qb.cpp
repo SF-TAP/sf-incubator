@@ -51,6 +51,10 @@ pkt_copy(struct netmap_ring* rxring, struct netmap_ring* txring, int flag);
 bool llc_filter(struct netmap_ring* ring);
 #endif
 
+#ifdef DEBUG
+void show_counter(netmap* l, netmap* r, std::vector<netmap*>& v);
+#endif
+
 void usage(char* prog_name);
 
 struct thread_param {
@@ -68,6 +72,7 @@ struct tap_info {
     netmap* nm;
     //struct ether_addr mac_dest;
 };
+
 
 int
 main(int argc, char** argv)
@@ -303,7 +308,9 @@ main(int argc, char** argv)
 
         while (1) {
             sleep(1);
-            // maybe,, cli thread
+#ifdef DEBUG
+            show_counter(nm_l, nm_r, v_nm_t);
+#endif
         }
 
         free(pth_lr);
@@ -347,7 +354,9 @@ main(int argc, char** argv)
 
         while (1) {
             sleep(1);
-            // maybe,, cli thread
+#ifdef DEBUG
+            show_counter(nm, NULL, v_nm_t);
+#endif
         }
 
         free(pth_tap);
@@ -458,6 +467,7 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
     struct netmap_ring* rxring = NULL;
     fd = nm->create_nmring_hard_rx(&rxring, ringid);
 
+#ifdef DEBUG
     if (debug) {
         pthread_mutex_lock(&debug_mutex);
         printf("fd    :%d\n", fd);
@@ -465,6 +475,7 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
         printf("rxring:%p\n", rxring);
         pthread_mutex_unlock(&debug_mutex);
     }
+#endif
 
     //struct ether_header* eth;
     //size_t ethlen = 0;
@@ -484,12 +495,12 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
         ti.fd = it->get_tx_ring_info_fd(ti.ringid);
         ti.ring = it->get_tx_ring_info_ring(ti.ringid);
         ti.nm = it;
-        //ti.mac_dest = *(it->get_mac_dest());
         v_tap_info.push_back(ti);
         memset(&ti, 0, sizeof(ti));
     }
 
 
+#ifdef DEBUG
     if (debug) {
         pthread_mutex_lock(&debug_mutex);
         int cur = 0;
@@ -501,14 +512,16 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
         }
         pthread_mutex_unlock(&debug_mutex);
     }
+#endif
 
     uint32_t rx_avail = 0;
     uint32_t tap_avail = 0;
 
-#ifdef FULLTAP
+#ifdef FULLTAP //--------------------------------------------------------------
 
     for (;;) {
 
+        //nm_rx->rxsync(rx_fd, rx_ringid);
         nm->rxsync_block(fd);
 
         rx_avail = nm->get_avail(rxring);
@@ -532,10 +545,11 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
                 }
 
                 pkt_copy(rxring, it.ring, 0);
-
                 it.nm->next(it.ring);
-                tap_avail--;
                 it.nm->tx_ring_unlock(it.ringid);
+#ifdef DEBUG
+                it.nm->incl_tx_ring_info_counter(it.ringid);
+#endif
             }
 
             nm->next(rxring);
@@ -550,7 +564,7 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
 
     }
 
-#else
+#else //FULLTAP ---------------------------------------------------------------
 
     int selection;
     struct tap_info* ti;
@@ -560,6 +574,7 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
 
         //nm_rx->rxsync(rx_fd, rx_ringid);
         nm->rxsync_block(fd);
+
         rx_avail = nm->get_avail(rxring);
 
         while (rx_avail-- > 0) {
@@ -574,7 +589,7 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
             //flag:1 L4base separator
             selection = interface_selector(rxring, v_tap_info, 1);
             if (selection != -1) {
-                ti = &v_tap_info.at(selection);
+                ti = &v_tap_info[selection];
                 ti->nm->tx_ring_lock(ti->ringid);
                 tap_avail = ti->nm->get_avail(ti->ring);
 
@@ -582,20 +597,21 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
                     // XXX ToDo drop count
                     ti->nm->tx_ring_unlock(ti->ringid);
                     goto QB_TAP_SEP_SEND;
-                } else {
-                    slot_swap(rxring, ti->ring);
-#ifdef TAPSW
-                    eth = ti->nm->get_eth(ti->ring);
-                    mac = ETH_GDA(eth);
-                    *mac = *ti->nm->get_mac_dest();
-                    mac = ETH_GSA(eth);
-                    *mac = *ti->nm->get_mac();
-#endif
-
-                    ti->nm->next(ti->ring);
                 }
 
+                slot_swap(rxring, ti->ring);
+#ifdef TAPSW
+                eth = ti->nm->get_eth(ti->ring);
+                mac = ETH_GDA(eth);
+                *mac = *ti->nm->get_mac_dest();
+                mac = ETH_GSA(eth);
+                *mac = *ti->nm->get_mac();
+#endif
+                ti->nm->next(ti->ring);
                 ti->nm->tx_ring_unlock(ti->ringid);
+#ifdef DEBUG
+                ti->nm->incl_tx_ring_info_counter(ti->ringid);
+#endif
             }
 
             nm->next(rxring);
@@ -611,7 +627,7 @@ tap_processing(netmap* nm, int ringid, std::vector<netmap*>* v_nm_tap)
 
     }
 
-#endif
+#endif //FULLTAP --------------------------------------------------------------
 
     return;
 }
@@ -630,6 +646,7 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
     rx_fd = nm_rx->create_nmring_hard_rx(&rxring, rx_ringid);
     tx_fd = nm_tx->create_nmring_hard_tx(&txring, tx_ringid);
 
+#ifdef DEBUG
     if (debug) {
         pthread_mutex_lock(&debug_mutex);
         printf("tx_pointer:%p\n", txring);
@@ -640,6 +657,7 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
         printf("rx_ringid:%d\n", rx_ringid);
         pthread_mutex_unlock(&debug_mutex);
     }
+#endif
 
     std::vector<struct tap_info> v_tap_info;
     std::vector<int> v_fds;
@@ -655,6 +673,7 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
         memset(&ti, 0, sizeof(ti));
     }
 
+#ifdef DEBUG
     if (debug) {
         pthread_mutex_lock(&debug_mutex);
         int cur = 0;
@@ -666,18 +685,20 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
         }
         pthread_mutex_unlock(&debug_mutex);
     }
+#endif
 
     uint32_t rx_avail = 0;
     uint32_t tx_avail = 0;
     uint32_t tap_avail = 0;
 
-#ifdef FULLTAP
+#ifdef FULLTAP //--------------------------------------------------------------
 
     int burst;
     for (;;) {
 
         //nm_rx->rxsync(rx_fd, rx_ringid);
         nm_rx->rxsync_block(rx_fd);
+
         rx_avail = nm_rx->get_avail(rxring);
         tx_avail = nm_tx->get_avail(txring);
 
@@ -707,13 +728,19 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
                 pkt_copy(rxring, it.ring, 0);
                 it.nm->next(it.ring);
                 it.nm->tx_ring_unlock(it.ringid);
+#ifdef DEBUG
+                it.nm->incl_tx_ring_info_counter(it.ringid);
+#endif
             }
 
             slot_swap(rxring, txring);
-            //pkt_copy(rxring, txring, 0);
 
             nm_tx->next(txring);
             nm_rx->next(rxring);
+#ifdef DEBUG
+            nm_tx->incl_tx_ring_info_counter(tx_ringid);
+            nm_rx->incl_rx_ring_info_counter(rx_ringid);
+#endif
         }
 
         nm_tx->txsync(tx_fd, tx_ringid);
@@ -725,17 +752,18 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
 
     }
 
-#else
+#else //FULLTAP ---------------------------------------------------------------
 
-    struct tap_info* ti;
     int burst;
     int selection;
-    struct ether_header* eth;
+    struct tap_info* ti;
     struct ether_addr* mac;
+    struct ether_header* eth;
     for (;;) {
 
         //nm_rx->rxsync(rx_fd, rx_ringid);
         nm_rx->rxsync_block(rx_fd);
+
         rx_avail = nm_rx->get_avail(rxring);
         tx_avail = nm_tx->get_avail(txring);
         
@@ -750,7 +778,7 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
 #endif
             selection = interface_selector(rxring, v_tap_info, 1);
             if (selection != -1) {
-                ti = &v_tap_info.at(selection);
+                ti = &v_tap_info[selection];
                 ti->nm->tx_ring_lock(ti->ringid);
                 tap_avail = ti->nm->get_avail(ti->ring);
 
@@ -758,26 +786,32 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
                     // XXX ToDo drop count
                     ti->nm->tx_ring_unlock(ti->ringid);
                     goto QB_FW_SEP_SEND;
-                } else {
-                    pkt_copy(rxring, ti->ring, 0);
-
-#ifdef TAPSW
-                    eth = ti->nm->get_eth(ti->ring);
-                    mac = ETH_GDA(eth);
-                    *mac = *ti->nm->get_mac_dest();
-                    mac = ETH_GSA(eth);
-                    *mac = *ti->nm->get_mac();
-#endif
-
-                    ti->nm->next(ti->ring);
-                    ti->nm->tx_ring_unlock(ti->ringid);
                 }
+
+                pkt_copy(rxring, ti->ring, 0);
+#ifdef TAPSW
+                eth = ti->nm->get_eth(ti->ring);
+                mac = ETH_GDA(eth);
+                *mac = *ti->nm->get_mac_dest();
+                mac = ETH_GSA(eth);
+                *mac = *ti->nm->get_mac();
+#endif
+                ti->nm->next(ti->ring);
+                ti->nm->tx_ring_unlock(ti->ringid);
+#ifdef DEBUG
+                ti->nm->incl_tx_ring_info_counter(ti->ringid);
+#endif
 
             }
 
             slot_swap(rxring, txring);
+
             nm_tx->next(txring);
             nm_rx->next(rxring);
+#ifdef DEBUG
+            nm_tx->incl_tx_ring_info_counter(tx_ringid);
+            nm_rx->incl_rx_ring_info_counter(rx_ringid);
+#endif
         }
             
         QB_FW_SEP_SEND:
@@ -792,7 +826,7 @@ fw_processing(netmap* nm_rx, netmap* nm_tx,
 
     }
 
-#endif
+#endif //FULLTAP --------------------------------------------------------------
 
     return;
 }
@@ -841,8 +875,8 @@ pkt_copy(struct netmap_ring* rxring, struct netmap_ring* txring, int flag)
 {
     if (flag == 0) {
 
-        #define likely(x)       __builtin_expect(!!(x), 1)
-        #define unlikely(x)       __builtin_expect(!!(x), 0)
+        #define pkt_copy_likely(x)       __builtin_expect(!!(x), 1)
+        #define pkt_copy_unlikely(x)       __builtin_expect(!!(x), 0)
 
         struct netmap_slot* rx_slot = 
              ((netmap_slot*)&rxring->slot[rxring->cur]);
@@ -854,7 +888,7 @@ pkt_copy(struct netmap_ring* rxring, struct netmap_ring* txring, int flag)
         uint64_t* dst = (uint64_t*)(NETMAP_BUF(txring, tx_slot->buf_idx));
         int l = rx_slot->len;
 
-        if (unlikely(l >= 1024)) {
+        if (pkt_copy_unlikely(l >= 1024)) {
             bcopy(src, dst, l);
         } else {
             for (; l >= 0; l-=32) {
@@ -870,8 +904,8 @@ pkt_copy(struct netmap_ring* rxring, struct netmap_ring* txring, int flag)
         }
         tx_slot->len = rx_slot->len;
 
-        #undef likely
-        #undef unlikely
+        #undef pkt_copy_likely
+        #undef pkt_copy_unlikely
 
     } else if (flag == 1) {
 
@@ -901,10 +935,24 @@ llc_filter(struct netmap_ring* ring) {
 
         uint16_t type = htons(eth->ether_type);
         if (__builtin_expect(!!(type>=0x05DC), 1)) {
-            return false;
-        } else {
-            return true;
+            return false; //pass through
         }
+
+        return true; //block out
+}
+#endif
+
+#ifdef DEBUG
+void show_counter(netmap* l, netmap* r, std::vector<netmap*>& v)
+{
+    /*
+    // XXX ToDo
+    int l_qnum = l->get_rx_qnum();
+    int r_qnum = r->get_rx_qnum();
+    for (auto it : v_nm_tap) {
+    }
+    */
+    return;
 }
 #endif
 
@@ -915,10 +963,17 @@ usage(char* prog_name)
     printf("  Must..\n");
     printf("    -l [ifname] (left interface)\n");
     printf("    -r [ifname] (right interface)\n");
+#ifdef TAPSW
+    printf("    -t [ifname(@mac_addr),ifname(@mac_addr),ifname(@mac_addr)...])\n");
+#else
     printf("    -t [ifname,ifname,ifname...])\n");
+#endif
     printf("  Option..\n");
     printf("    -h/? : help usage information\n");
+#ifdef DEBUG
     printf("    -v : verbose mode\n");
+#endif
     printf("\n");
     return;
 }
+

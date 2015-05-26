@@ -2,7 +2,7 @@
 #ifndef __netmap_hpp__
 #define __netmap_hpp__
 
-#define USE_NETMAP_API_11
+//#define USE_NETMAP_API_11
 
 #include "common.hpp"
 
@@ -60,6 +60,7 @@ public:
         char* map;
         struct netmap_ring* ring;
         volatile int lock;
+        uint64_t counter;
     };
 
     // control methods
@@ -83,7 +84,7 @@ public:
     bool set_promisc();
     bool unset_promisc();
 
-    // netmap getter
+    // netmap getter/setter
     char* get_ifname();
     uint16_t get_tx_qnum();
     uint16_t get_rx_qnum();
@@ -97,13 +98,22 @@ public:
     inline struct netmap_slot* get_slot(struct netmap_ring* ring);
     inline struct ether_header* get_eth(struct netmap_ring* ring);
     int get_tx_ring_info_fd(int ringid);
-    char* get_tx_ring_info_map(int ringid);
-    struct netmap_ring* get_tx_ring_info_ring(int ringid);
     int get_rx_ring_info_fd(int ringid);
+    char* get_tx_ring_info_map(int ringid);
     char* get_rx_ring_info_map(int ringid);
+    struct netmap_ring* get_tx_ring_info_ring(int ringid);
     struct netmap_ring* get_rx_ring_info_ring(int ringid);
     inline uint32_t get_avail(struct netmap_ring* ring);
 
+#ifdef DEBUG
+    // tmporary
+    uint64_t get_tx_ring_info_counter(int ringid);
+    uint64_t get_rx_ring_info_counter(int ringid);
+    void incl_tx_ring_info_counter(int ringid);
+    void incl_rx_ring_info_counter(int ringid);
+#endif
+
+    // ring spin lock
     inline void tx_ring_lock(int ringid);
     inline void tx_ring_unlock(int ringid);
     inline void rx_ring_lock(int ringid);
@@ -552,7 +562,6 @@ netmap::tx_ring_lock(int ringid)
         //sched_yield()を呼ぶこと．
         while (tx_ring_info[ringid]->lock) {};
     }
-
     /*
     while (__sync_bool_compare_and_swap(&tx_ring_info[ringid]->lock, 0, 1) == 0) {
         asm volatile("lfence" ::: "memory");
@@ -566,7 +575,6 @@ inline void
 netmap::tx_ring_unlock(int ringid)
 {
     __sync_lock_release(&tx_ring_info[ringid]->lock);
-
     /*
     tx_ring_info[ringid]->lock = 0;
     asm volatile("sfence" ::: "memory");
@@ -584,7 +592,6 @@ netmap::rx_ring_lock(int ringid)
         //sched_yield()を呼ぶこと．
         while (rx_ring_info[ringid]->lock) {};
     }
-
     /*
     while (__sync_bool_compare_and_swap(&rx_ring_info[ringid]->lock, 0, 1) == 0) {
         asm volatile("lfence" ::: "memory");
@@ -598,15 +605,12 @@ inline void
 netmap::rx_ring_unlock(int ringid)
 {
     __sync_lock_release(&rx_ring_info[ringid]->lock);
-
     /*
     rx_ring_info[ringid]->lock = 0;
     asm volatile("sfence" ::: "memory");
     */
     return;
 }
-
-
 
 inline void
 netmap::set_ethlen(struct netmap_ring* ring, size_t size)
@@ -697,6 +701,7 @@ bool
 netmap::set_promisc()
 {
 #ifndef __linux__
+
     int fd;
     struct ifreq ifr;
     memset(&ifr, 0, sizeof(ifr));
@@ -821,7 +826,6 @@ netmap::unset_promisc()
     }
 
     close(fd);
-    return true;
 
 #endif
     
@@ -853,6 +857,7 @@ netmap::_create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw)
     nmr.nr_ringid = (swhw | qnum);
     //NETMAP_HW_RING 0x4000
     //NETMAP_SW_RING 0x2000
+
 #if NETMAP_API > 4
     //nmr.nr_ringid = nmr.nr_ringid | NETMAP_NO_TX_POLL | NETMAP_DO_RX_POLL;
     
@@ -943,6 +948,7 @@ netmap::_create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw)
             mv->ring = *ring;
         }
         mv->lock = 0;
+        mv->counter = 0;
 
         pthread_mutex_lock(&lock_ring_info);
         tx_ring_info[qnum] = mv; 
@@ -965,6 +971,7 @@ netmap::_create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw)
             mv->ring = *ring;
         }
         mv->lock = 0;
+        mv->counter = 0;
 
         pthread_mutex_lock(&lock_ring_info);
         rx_ring_info[qnum] = mv; 
@@ -977,7 +984,6 @@ netmap::_create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw)
 
     } else {
     }
-
 
     return fd;
 }
@@ -1078,4 +1084,40 @@ netmap::remove_rxring(int qnum)
     return false;
 }
 
-#endif
+#ifdef DEBUG
+uint64_t
+netmap::get_tx_ring_info_counter(int ringid)
+{
+    int counter;
+    counter = tx_ring_info[ringid]->counter;
+    return counter;
+}
+
+uint64_t
+netmap::get_rx_ring_info_counter(int ringid)
+{
+    int counter;
+    counter = rx_ring_info[ringid]->counter;
+    return counter;
+}
+
+inline void
+netmap::incl_tx_ring_info_counter(int ringid)
+{
+    uint64_t inc = 1;
+    uint64_t* ptr = &tx_ring_info[ringid]->counter;
+    asm volatile("lock; xaddq %1, %0;" : "=m" (*ptr) : "a" (inc) : "memory");
+    return;
+}
+
+inline void
+netmap::incl_rx_ring_info_counter(int ringid)
+{
+    uint64_t inc = 1;
+    uint64_t* ptr = &rx_ring_info[ringid]->counter;
+    asm volatile("lock; xaddq %1, %0;" : "=m" (*ptr) : "a" (inc) : "memory");
+    return;
+}
+#endif //DEBUG
+
+#endif //__netmap_hpp__

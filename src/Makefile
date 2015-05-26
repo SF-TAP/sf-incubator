@@ -7,14 +7,14 @@ debug: separator_debug tap_debug
 
 INCLUDE:="-I../../netmap/sys"
 
-#define_option TAPSW, DROPLLC POLL DEBUG
+#define_option TAPSW, DROPLLC POLL BINDCPU DEBUG
 
 separator: qb.cpp netmap.hpp common.hpp
-	c++ ${INCLUDE} -O3 -std=c++11 -Wall -Wno-write-strings -Wno-unused-variable -Wno-unused-function -DPOLL -DDROPLLC -DTAPSW ./qb.cpp -o qb-separator -lpthread
+	c++ ${INCLUDE} -O3 -std=c++11 -Wall -Wno-write-strings -Wno-unused-variable -Wno-unused-function -DPOLL -DTAPSW -DDROPLLC ./qb.cpp -o qb-separator -lpthread
 .PHONY : separator
 
 tap: qb.cpp netmap.hpp common.hpp ether.hpp
-	c++ ${INCLUDE} -O3 -std=c++11 -Wall -Wno-write-strings -Wno-unused-variable -Wno-unused-function -DFULLTAP -DPOLL -DDROPLLC -DTAPSW ./qb.cpp -o qb-tap -lpthread
+	c++ ${INCLUDE} -O3 -std=c++11 -Wall -Wno-write-strings -Wno-unused-variable -Wno-unused-function -DFULLTAP -DPOLL -DTAPSW -DDROPLLC ./qb.cpp -o qb-tap -lpthread
 .PHONY : tap
 
 separator_debug: qb.cpp netmap.hpp common.hpp
