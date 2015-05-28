@@ -1,8 +1,5 @@
-
 #ifndef __netmap_hpp__
 #define __netmap_hpp__
-
-//#define USE_NETMAP_API_11
 
 #include "common.hpp"
 
@@ -41,7 +38,6 @@
 #include <net/netmap.h>
 #include <net/netmap_user.h>
 
-
 char* netmap_mem = NULL;
 int netmap_mem_ref = 0;
 
@@ -49,9 +45,7 @@ class netmap
 {
 public:
 
-    // constructor
     netmap();
-    // destructor
     virtual ~netmap();
 
     struct ring_info {
@@ -858,14 +852,11 @@ netmap::_create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw)
     //NETMAP_HW_RING 0x4000
     //NETMAP_SW_RING 0x2000
 
-#if NETMAP_API > 4
-    //nmr.nr_ringid = nmr.nr_ringid | NETMAP_NO_TX_POLL | NETMAP_DO_RX_POLL;
-    
+    nmr.nr_ringid = nmr.nr_ringid | NETMAP_NO_TX_POLL | NETMAP_DO_RX_POLL;
     if (netmap_mem == NULL) {
         nmr.nr_ringid = nmr.nr_ringid;
     } else {
         nmr.nr_ringid = nmr.nr_ringid | NM_OPEN_NO_MMAP;
-        //nmr.nr_arg2 = NM_OPEN_NO_MMAP;
     }
     if (swhw == NETMAP_SW_RING) {
         nmr.nr_flags = NR_REG_SW;
@@ -874,7 +865,6 @@ netmap::_create_nmring(struct netmap_ring** ring, int qnum, int rxtx, int swhw)
     } else {
         nmr.nr_flags = 0;
     }
-#endif
 
     if (ioctl(fd, NIOCREGIF, &nmr) < 0) {
         perror("ioctl");
