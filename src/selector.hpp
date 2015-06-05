@@ -298,11 +298,15 @@ next_ip6(struct ip6_hdr* ip6hdr, int flag)
 inline uint32_t
 next_vlan(uint8_t* hdr, int flag)
 {
-    uint16_t tag_id = htons(hdr[0]);
-    uint16_t next_type = htons(hdr[1]);
-    uint8_t* next_hdr = NEXTHDR(hdr, 4);
     uint32_t selection;
-    printf("vlanID: %d\n", tag_id);
+    uint8_t* next_hdr = NEXTHDR(hdr, 4);
+
+    //uint16_t tag_id = ntohs(*(uint16_t*)&hdr[0]) & 0x0fff;
+    //printf("vlanID: %d\n", tag_id);
+
+    uint16_t next_type = ntohs(*(uint16_t*)&hdr[2]);
+    //printf("nextID: 0x%04x\n", next_type);
+
     switch(next_type)
     {
         case ETHERTYPE_IP:
@@ -335,8 +339,8 @@ interface_selector(struct netmap_ring* ring,
         std::vector<struct tap_info>& v_tap_info, int flag)
 {
 
-    uint32_t selection = -1;
-    if (v_tap_info.size() == 0) return selection;
+    int32_t selection = 0;
+    if (v_tap_info.size() == 0) return -1;
 
     struct netmap_slot* rx_slot = 
          ((netmap_slot*)&ring->slot[ring->cur]);
@@ -347,7 +351,7 @@ interface_selector(struct netmap_ring* ring,
     //size_t ethlen = rx_slot->len;
 
     //printf("%x\n", ntohs(hdrptr->ether_type));
-    pktdump((uint8_t*)hdrptr, 64);
+    //pktdump((uint8_t*)hdrptr, 64);
 
 
     switch(ntohs(hdrptr->ether_type))
@@ -368,11 +372,11 @@ interface_selector(struct netmap_ring* ring,
             break;
         }
 
-        case ETHERTYPE_VLAN: //0x8100
+        case ETHERTYPE_VLAN:
         {
-            printf("hoge\n");
             selection = 
-            next_vlan(NEXTHDR(hdrptr, sizeof(struct ether_header)), flag);
+            next_vlan(NEXTHDR(hdrptr,
+                        sizeof(struct ether_header)), flag);
             break;
         }
 
@@ -383,8 +387,8 @@ interface_selector(struct netmap_ring* ring,
         }
 
     }
-
     //printf("selection    :0x%x\n", selection);
+
     selection = selection % v_tap_info.size();
     //printf("selection_mod:0x%x\n", selection);
 
