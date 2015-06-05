@@ -71,11 +71,7 @@ get_ip4_transport_key(struct ip_hdr* iphdr)
                 {
                     struct tcphdr* tcphdr =
                         (struct tcphdr*)((char*)iphdr+(iphdr->hl<<2));
-                    if (tcphdr->th_sport <= tcphdr->th_dport) {
-                        retval = tcphdr->th_sport<<16 | tcphdr->th_dport;
-                    } else {
-                        retval = tcphdr->th_dport<<16 | tcphdr->th_sport;
-                    }
+                    retval = tcphdr->th_sport ^ tcphdr->th_dport;
                     goto SUCCESS_V4;
                 }
 
@@ -83,11 +79,7 @@ get_ip4_transport_key(struct ip_hdr* iphdr)
                 {
                     struct udphdr* udphdr =
                         (struct udphdr*)((char*)iphdr+(iphdr->hl<<2));
-                    if (udphdr->uh_sport <= udphdr->uh_dport) {
-                        retval = udphdr->uh_sport<<16 | udphdr->uh_dport;
-                    } else {
-                        retval = udphdr->uh_dport<<16 | udphdr->uh_sport;
-                    }
+                    retval = udphdr->uh_dport ^ udphdr->uh_sport;
                     goto SUCCESS_V4;
                 }
 
@@ -109,11 +101,7 @@ get_ip4_transport_key(struct ip_hdr* iphdr)
                 {
                     struct tcphdr* tcphdr =
                         (struct tcphdr*)((char*)iphdr+(iphdr->hl<<2));
-                    if (tcphdr->th_sport <= tcphdr->th_dport) {
-                        retval = tcphdr->th_sport<<16 | tcphdr->th_dport;
-                    } else {
-                        retval = tcphdr->th_dport<<16 | tcphdr->th_sport;
-                    }
+                    retval = tcphdr->th_dport ^ tcphdr->th_sport;
                     hash = (iphdr->id)^
                            (iphdr->saddr)^
                            (iphdr->daddr);
@@ -125,11 +113,7 @@ get_ip4_transport_key(struct ip_hdr* iphdr)
                 {
                     struct udphdr* udphdr =
                         (struct udphdr*)((char*)iphdr+(iphdr->hl<<2));
-                    if (udphdr->uh_sport<<16 <= udphdr->uh_dport) {
-                        retval = udphdr->uh_sport<<16 | udphdr->uh_dport;
-                    } else {
-                        retval = udphdr->uh_dport<<16 | udphdr->uh_sport;
-                    }
+                    retval = udphdr->uh_dport ^ udphdr->uh_sport;
                     hash = (iphdr->id)^
                            (iphdr->saddr)^
                            (iphdr->daddr);
@@ -186,11 +170,7 @@ get_ip6_transport_key(struct ip6_hdr* ip6hdr)
         {
             struct tcphdr* tcphdr
                 = (struct tcphdr*)((char*)ip6hdr+(sizeof(struct ip6_hdr)));
-            if (tcphdr->th_sport <= tcphdr->th_dport) {
-                retval = tcphdr->th_sport<<16 | tcphdr->th_dport;
-            } else {
-                retval = tcphdr->th_dport<<16 | tcphdr->th_sport;
-            }
+            retval = tcphdr->th_dport ^ tcphdr->th_sport;
             goto SUCCESS_V6;
         }
 
@@ -198,11 +178,7 @@ get_ip6_transport_key(struct ip6_hdr* ip6hdr)
         {
             struct udphdr* udphdr
                 = (struct udphdr*)((char*)ip6hdr+(sizeof(struct ip6_hdr)));
-            if (udphdr->uh_sport <= udphdr->uh_dport) {
-                retval = udphdr->uh_sport<<16 | udphdr->uh_dport;
-            } else {
-                retval = udphdr->uh_dport<<16 | udphdr->uh_sport;
-            }
+            retval = udphdr->uh_dport ^ udphdr->uh_sport;
             goto SUCCESS_V6;
         }
 
@@ -242,11 +218,7 @@ get_ip6_transport_key(struct ip6_hdr* ip6hdr)
                     if (frag_offset == 0) {
                         struct tcphdr* tcphdr
                             = (struct tcphdr*)NEXTHDR(fhdr, sizeof(struct v6opt_f_hdr));
-                        if (tcphdr->th_sport <= tcphdr->th_dport) {
-                            retval = tcphdr->th_sport<<16 | tcphdr->th_dport;
-                        } else {
-                            retval = tcphdr->th_dport<<16 | tcphdr->th_sport;
-                        }
+                        retval = tcphdr->th_dport ^ tcphdr->th_sport;
                         hash = xor6(ip6hdr->ip6_src) ^
                                xor6(ip6hdr->ip6_dst) ^
                                fhdr->id;
@@ -330,6 +302,7 @@ next_vlan(uint8_t* hdr, int flag)
     uint16_t next_type = htons(hdr[1]);
     uint8_t* next_hdr = NEXTHDR(hdr, 4);
     uint32_t selection;
+    printf("vlanID: %d\n", tag_id);
     switch(next_type)
     {
         case ETHERTYPE_IP:
@@ -337,18 +310,20 @@ next_vlan(uint8_t* hdr, int flag)
             selection = next_ip4((struct ip_hdr*)next_hdr, flag);
             break;
         }
+
         case ETHERTYPE_IPV6:
         {
             selection = next_ip6((struct ip6_hdr*)next_hdr, flag);
             break;
         }
+
         default:
         {
             return 0;
             break;
         }
     }
-    return 0;
+    return selection;
 }
 
 // -1    : fail
@@ -371,6 +346,10 @@ interface_selector(struct netmap_ring* ring,
 
     //size_t ethlen = rx_slot->len;
 
+    //printf("%x\n", ntohs(hdrptr->ether_type));
+    pktdump((uint8_t*)hdrptr, 64);
+
+
     switch(ntohs(hdrptr->ether_type))
     {
         case ETHERTYPE_IP:
@@ -380,6 +359,7 @@ interface_selector(struct netmap_ring* ring,
                         sizeof(struct ether_header)), flag);
             break;
         }
+
         case ETHERTYPE_IPV6:
         {
             selection = 
@@ -388,8 +368,9 @@ interface_selector(struct netmap_ring* ring,
             break;
         }
 
-        case ETHERTYPE_VLAN:
+        case ETHERTYPE_VLAN: //0x8100
         {
+            printf("hoge\n");
             selection = 
             next_vlan(NEXTHDR(hdrptr, sizeof(struct ether_header)), flag);
             break;
