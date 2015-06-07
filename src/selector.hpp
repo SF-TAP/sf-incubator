@@ -37,10 +37,32 @@ struct selector_info {
 
 struct selector_info* selector_info4;
 struct selector_info* selector_info6;
+int selector_table[0x100];
 
 void
-selector_init(size_t hash_size)
+selector_init(size_t hash_size, size_t ifs)
 {
+
+#ifdef TIFLOOKUP
+    memset(selector_table, 0, sizeof(selector_table));
+    int assgin_counter = 0;
+    for (int i=0; i<sizeof(selector_table); i++) {
+        selector_table[i] = assgin_counter;
+        if (assgin_counter < ifs-1) {
+            assgin_counter++;
+        } else {
+            assgin_counter = 0;
+        }
+    }
+    /*
+    //debug
+    for (int i=0; i<0x100; i++) {
+        printf("%d -> %d\n", i, selector_table[i]);
+    }
+    printf("%zu\n", ifs);
+    */
+#endif
+
     size_t memsize = sizeof(struct selector_info*) * SELECTOR_HASH_SIZE;
 
     selector_info4 =
@@ -387,9 +409,13 @@ interface_selector(struct netmap_ring* ring,
         }
 
     }
-    //printf("selection    :0x%x\n", selection);
 
+    //printf("selection    :0x%x\n", selection);
+#ifdef TIFLOOKUP
+    selection = selector_table[(uint8_t)selection];
+#else
     selection = selection % v_tap_info.size();
+#endif
     //printf("selection_mod:0x%x\n", selection);
 
     return selection;

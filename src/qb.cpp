@@ -242,7 +242,7 @@ main(int argc, char** argv)
 
 #ifdef FULLTAP
 #else
-    selector_init(SELECTOR_HASH_SIZE);
+    selector_init(SELECTOR_HASH_SIZE, s);
 #endif
 
     //nm_l.dump_nmr();
