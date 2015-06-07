@@ -43,10 +43,11 @@ void
 selector_init(size_t hash_size, size_t ifs)
 {
 
+    int loop = sizeof(selector_table)/sizeof(int);
 #ifdef TIFLOOKUP
     memset(selector_table, 0, sizeof(selector_table));
     int assgin_counter = 0;
-    for (int i=0; i<sizeof(selector_table); i++) {
+    for (int i=0; i<loop; i++) {
         selector_table[i] = assgin_counter;
         if (assgin_counter < ifs-1) {
             assgin_counter++;
