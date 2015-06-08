@@ -37,14 +37,17 @@ struct selector_info {
 
 struct selector_info* selector_info4;
 struct selector_info* selector_info6;
-int selector_table[0x100];
+
+#ifdef TIFLOOKUP
+uint32_t selector_table[0x100];
+#endif
 
 void
 selector_init(size_t hash_size, size_t ifs)
 {
 
-    int loop = sizeof(selector_table)/sizeof(int);
 #ifdef TIFLOOKUP
+    int loop = sizeof(selector_table)/sizeof(selector_table[0]);
     memset(selector_table, 0, sizeof(selector_table));
     int assgin_counter = 0;
     for (int i=0; i<loop; i++) {
@@ -55,8 +58,8 @@ selector_init(size_t hash_size, size_t ifs)
             assgin_counter = 0;
         }
     }
-    /*
     //debug
+    /*
     for (int i=0; i<0x100; i++) {
         printf("%d -> %d\n", i, selector_table[i]);
     }
@@ -362,7 +365,7 @@ interface_selector(struct netmap_ring* ring,
         std::vector<struct tap_info>& v_tap_info, int flag)
 {
 
-    int32_t selection = 0;
+    uint32_t selection = 0;
     if (v_tap_info.size() == 0) return -1;
 
     struct netmap_slot* rx_slot = 
@@ -413,13 +416,10 @@ interface_selector(struct netmap_ring* ring,
 
     //printf("selection    :0x%x\n", selection);
 #ifdef TIFLOOKUP
-    selection = selector_table[(uint8_t)selection];
+    return selector_table[(uint8_t)selection];
 #else
-    selection = selection % v_tap_info.size();
+    return selection % v_tap_info.size();
 #endif
-    //printf("selection_mod:0x%x\n", selection);
-
-    return selection;
 }
 
 

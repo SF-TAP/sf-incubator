@@ -22,7 +22,7 @@ separator: qb.cpp netmap.hpp common.hpp
 .PHONY : separator
 
 tap: qb.cpp netmap.hpp common.hpp ether.hpp
-	c++ ${INCLUDE} -O3 -std=c++11 -Wall -Wno-write-strings -Wno-unused-variable -Wno-unused-function -DFULLTAP -DPOLL -DTAPSW -DDROPLLC ./qb.cpp -o qb-tap -lpthread
+	c++ ${INCLUDE} -O3 -std=c++11 -Wall -Wno-write-strings -Wno-unused-variable -Wno-unused-function -DFULLTAP -DPOLL -DTAPSW -DDROPLLC -DTIFLOOKUP ./qb.cpp -o qb-tap -lpthread
 .PHONY : tap
 
 separator_debug: qb.cpp netmap.hpp common.hpp
@@ -30,7 +30,7 @@ separator_debug: qb.cpp netmap.hpp common.hpp
 .PHONY : separator
 
 tap_debug: qb.cpp netmap.hpp common.hpp ether.hpp
-	c++ ${INCLUDE} -g -std=c++11 -Wall -Wno-write-strings -Wno-unused-variable -Wno-unused-function -DDEBUG -DFULLTAP -DPOLL -DDROPLLC -DTAPSW ./qb.cpp -o qb-tap_debug -lpthread
+	c++ ${INCLUDE} -g -std=c++11 -Wall -Wno-write-strings -Wno-unused-variable -Wno-unused-function -DDEBUG -DFULLTAP -DPOLL -DDROPLLC -DTAPSW -DTIFLOOKUP ./qb.cpp -o qb-tap_debug -lpthread
 .PHONY : tap
 
 getinfo: getinfo.c
