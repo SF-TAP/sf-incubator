@@ -847,7 +847,7 @@ slot_swap(struct netmap_ring* rxring, struct netmap_ring* txring)
         (struct ether_header*)NETMAP_BUF(rxring, rx_slot->buf_idx);
     struct ether_header* tx_eth = 
         (struct ether_header*)NETMAP_BUF(txring, tx_slot->buf_idx);
-    memcpy(tx_eth, rx_eth, tx_slot->len);
+    memcpy(tx_eth, rx_eth, rx_slot->len);
 
 #else
 
