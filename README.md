@@ -6,7 +6,7 @@ The SF-TAP cell incubator is a high performance software-based flow separator or
 
 More detailed documents are available on the following link.
 
-[SF-TAP's Home Page]http://sf-tap.github.io/ "SF-TAP")
+[SF-TAP's Home Page](http://sf-tap.github.io/ "SF-TAP")
 
 ## Misc.
 
