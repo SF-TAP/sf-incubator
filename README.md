@@ -1,13 +1,12 @@
 # SF-TAP Cell Incubator
 
-SF-TAP cell incubator is a high performance software-based flow separator or duplicator by using netmap.
+The SF-TAP cell incubator is a high performance software-based flow separator or duplicator by using netmap.
 
 ## Documents
 
 More detailed documents are available on the following link.
 
-[SF-TAP's Documents](https://github.com/SF-TAP/documents "SF-TAP's Documents")
-
+[SF-TAP's Home Page]http://sf-tap.github.io/ "SF-TAP")
 
 ## Misc.
 
