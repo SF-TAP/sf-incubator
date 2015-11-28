@@ -140,11 +140,14 @@ main(int argc, char** argv)
     if (opt_l.size() == 0) {
         nm_l = NULL;
     } else if (!is_exist_if(if_list, opt_l)) {
-        MESG("-l is not exist interface.");
+        MESG2("-l is not exist interface.");
         exit(EXIT_FAILURE);
     } else {
         nm_l = new netmap();
-        nm_l->open_if(opt_l);
+        if (! nm_l->open_if(opt_l)) {
+            MESG2("could not open -l (%s)", opt_l.c_str());
+            exit(EXIT_FAILURE);
+        }
         nm_l->set_promisc();
     }
 
@@ -152,22 +155,26 @@ main(int argc, char** argv)
     if (opt_r.size() == 0) {
         nm_r = NULL;
     } else if (!is_exist_if(if_list, opt_r)) {
-        MESG("-r is not exist interface.");
+        MESG2("-r is not exist interface.");
         exit(EXIT_FAILURE);
     } else {
         nm_r = new netmap();
         nm_r->open_if(opt_r);
+        if (! nm_r->open_if(opt_r)) {
+            MESG2("could not open -r (%s)", opt_r.c_str());
+            exit(EXIT_FAILURE);
+        }
         nm_r->set_promisc();
     }
 
     if (nm_l == NULL && nm_r == NULL) {
         usage(argv[0]);
-        MESG("-l/-r have to assigned interface.");
+        MESG2("-l/-r have to assigned interface.");
         exit(EXIT_FAILURE);
     }
 
     if ((opt_l == opt_r) && (nm_l != NULL) && (nm_r != NULL)) {
-        MESG("-l/-r is same interface.");
+        MESG2("-l/-r is same interface.");
         exit(EXIT_FAILURE);
     }
 
@@ -191,29 +198,29 @@ main(int argc, char** argv)
             if (is_ether_addr((char*)v[1].c_str())) {
                 dmac_list.push_back(*ether_aton(v[1].c_str()));
             } else {
-                MESG("-t is format error (ether_addr)");
+                MESG2("-t is format error (ether_addr)");
                 exit(EXIT_FAILURE);
             }
         } else {
-            MESG("-t is format error");
+            MESG2("-t is format error");
             exit(EXIT_FAILURE);
         }
     }
 
     for (auto it : tap_list) {
         if (!is_exist_if(if_list, it)) {
-            MESG("-t is included non exist interface.");
+            MESG2("-t is included non exist interface.");
             exit(EXIT_FAILURE);
         }
     }
 
     if (is_exist_if(tap_list, opt_l)) {
-        MESG("-t is included -l interface.");
+        MESG2("-t is included -l interface.");
         exit(EXIT_FAILURE);
     }
 
     if (is_exist_if(tap_list, opt_r)) {
-        MESG("-t is included -r interface.");
+        MESG2("-t is included -r interface.");
         exit(EXIT_FAILURE);
     }
 
@@ -233,6 +240,10 @@ main(int argc, char** argv)
     for (int j = 0; j < s; j++) {
         netmap* nm_tmp = new netmap();
         nm_tmp->open_if(tap_list[j]);
+        if (! nm_tmp->open_if(tap_list[j])) {
+            MESG2("could not open -t (%s)", tap_list[j].c_str());
+            exit(EXIT_FAILURE);
+        }
         for (int i=0; i<nm_tmp->get_tx_qnum(); i++) {
             nm_tmp->create_nmring_hard_tx(NULL, i);
         }

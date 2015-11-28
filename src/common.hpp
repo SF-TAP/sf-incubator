@@ -23,6 +23,19 @@ pthread_mutex_t debug_mutex = NULL;
 #define MESG(format, ...) do {} while (false)
 #endif //DEBUG
 
+#ifdef DEBUG
+#define MESG2(format, ...) do {                            \
+    if (debug) {                                           \
+        fprintf(stderr, "%s:%s(%d): " format "\n",         \
+        __FILE__, __FUNCTION__, __LINE__, ##__VA_ARGS__);  \
+    }                                                      \
+} while (false)
+#else
+#define MESG2(format, ...) do {                            \
+    fprintf(stderr, format "\n", ##__VA_ARGS__);           \
+} while (false)
+#endif //DEBUG
+
 
 #ifdef DEBUG
 #define PERROR(func) do {                    \
