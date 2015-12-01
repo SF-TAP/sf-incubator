@@ -3,7 +3,8 @@
 DEV=$1
 ETHTOOL="ethtool"
 
-for OPT in tx rx sg tso ufo gso gro lro rxlan txlan rxhash
+for OPT in tx rx sg tso gso gro lro rxhash rxvlan txvlan
 do
-    ${ETHTOOL} ${DEV} ${OPT} off
+    echo ${ETHTOOL} -K ${DEV} ${OPT} off
+    ${ETHTOOL} -K ${DEV} ${OPT} off
 done
