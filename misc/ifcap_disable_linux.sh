@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 
 DEV=$1
-ETHTOOL="/usr/sbin/ethtool"
+ETHTOOL="ethtool"
 
 for OPT in tx rx sg tso ufo gso gro lro rxlan txlan rxhash
 do
