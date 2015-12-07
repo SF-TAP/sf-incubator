@@ -49,7 +49,7 @@ selector_init(size_t hash_size, size_t ifs)
 #ifdef TIFLOOKUP
     int loop = sizeof(selector_table)/sizeof(selector_table[0]);
     memset(selector_table, 0, sizeof(selector_table));
-    int assgin_counter = 0;
+    size_t assgin_counter = 0;
     for (int i=0; i<loop; i++) {
         selector_table[i] = assgin_counter;
         if (assgin_counter < ifs-1) {
@@ -304,10 +304,18 @@ next_ip4(struct ip_hdr* iphdr, int flag)
     return 0;
 }
 
-#define xor6(inaddr6) inaddr6.__u6_addr.__u6_addr32[0] ^ \
-                      inaddr6.__u6_addr.__u6_addr32[1] ^ \
-                      inaddr6.__u6_addr.__u6_addr32[2] ^ \
-                      inaddr6.__u6_addr.__u6_addr32[3]
+#ifdef __linux__
+    #define xor6(inaddr6) inaddr6.__in6_u.__u6_addr32[0] ^ \
+                          inaddr6.__in6_u.__u6_addr32[1] ^ \
+                          inaddr6.__in6_u.__u6_addr32[2] ^ \
+                          inaddr6.__in6_u.__u6_addr32[3]
+#else
+    #define xor6(inaddr6) inaddr6.__u6_addr.__u6_addr32[0] ^ \
+                          inaddr6.__u6_addr.__u6_addr32[1] ^ \
+                          inaddr6.__u6_addr.__u6_addr32[2] ^ \
+                          inaddr6.__u6_addr.__u6_addr32[3]
+#endif // __linux__
+
 inline uint32_t
 next_ip6(struct ip6_hdr* ip6hdr, int flag)
 {

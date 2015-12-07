@@ -29,7 +29,7 @@
 #endif
 
 extern bool debug;
-extern pthread_mutex_t debug_mutex;
+pthread_mutex_t debug_mutex;
 
 bool bind_cpu(int cpu, int reverse);
 
@@ -191,8 +191,9 @@ main(int argc, char** argv)
         size_t s = v.size();
         if (s == 1) {
             tap_list.push_back(v[0]);
-            uint8_t ea_tmp[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-            dmac_list.push_back(*(struct ether_addr*)&ea_tmp);
+            ether_addr ea_tmp;
+            memset(&ea_tmp, 0xffffffff, sizeof(ea_tmp));
+            dmac_list.push_back(ea_tmp);
         } else if (s == 2) {
             tap_list.push_back(v[0]);
             if (is_ether_addr((char*)v[1].c_str())) {
@@ -237,7 +238,7 @@ main(int argc, char** argv)
     */
     std::vector<netmap*> v_nm_t;
     size_t s = tap_list.size();
-    for (int j = 0; j < s; j++) {
+    for (size_t j = 0; j < s; j++) {
         netmap* nm_tmp = new netmap();
         nm_tmp->open_if(tap_list[j]);
         if (! nm_tmp->open_if(tap_list[j])) {
