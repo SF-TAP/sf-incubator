@@ -18,8 +18,8 @@ done
 
 for i in `cat /tmp/emX`
 do
-	echo ifconfig ${i} -rxcsum -txcsum -rxcsum6 -txcsum6 -tso -tso6 -tso4 -lro -vlanhwtag -vlanhwtso up
-	ifconfig ${i} -rxcsum -txcsum -rxcsum6 -txcsum6 -tso -tso6 -tso4 -lro -vlanhwtag -vlanhwtso up
+    echo ifconfig ${i} -rxcsum -txcsum -rxcsum6 -txcsum6 -tso -tso6 -tso4 -lro -vlanhwtag -vlanhwtso up
+    ifconfig ${i} -rxcsum -txcsum -rxcsum6 -txcsum6 -tso -tso6 -tso4 -lro -vlanhwtag -vlanhwtso up
 done
 
 #sysctl -w dev.netmap.if_size=2048
