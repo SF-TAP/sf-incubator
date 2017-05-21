@@ -903,7 +903,7 @@ pkt_copy(struct netmap_ring* rxring, struct netmap_ring* txring, int flag)
         if (pkt_copy_unlikely(l >= 1024)) {
             bcopy(src, dst, l);
         } else {
-            for (; l >= 0; l-=32) {
+            for (; l >= 0; l-=64) {
                 *dst++ = *src++;
                 *dst++ = *src++;
                 *dst++ = *src++;
