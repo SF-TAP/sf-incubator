@@ -945,7 +945,7 @@ llc_filter(struct netmap_ring* ring) {
         struct ether_header* eth =
             (struct ether_header*)(NETMAP_BUF(ring, slot->buf_idx));
 
-        uint16_t type = htons(eth->ether_type);
+        uint16_t type = ntohs(eth->ether_type);
         if (__builtin_expect(!!(type>=0x05DC), 1)) {
             return false; //pass through
         }
