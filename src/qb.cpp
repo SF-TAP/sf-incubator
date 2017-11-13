@@ -29,6 +29,7 @@
 #endif
 
 extern bool debug;
+
 pthread_mutex_t debug_mutex;
 
 bool bind_cpu(int cpu, int reverse);
@@ -85,6 +86,9 @@ main(int argc, char** argv)
     std::string opt_l;
     std::string opt_r;
     std::string opt_t;
+#if !defined(FULLTAP) && defined(MYU)
+    std::string opt_u;
+#endif
 
     std::vector<std::string> tap_list;
     std::vector<struct ether_addr> dmac_list;
@@ -93,9 +97,12 @@ main(int argc, char** argv)
 
     struct option long_options[] = {
         {"help",  no_argument, NULL, 'h'},
-        {"left",  no_argument, NULL, 'l'},
-        {"right", no_argument, NULL, 'r'},
-        {"tap",   no_argument, NULL, 't'},
+        {"left",  required_argument, NULL, 'l'},
+        {"right", required_argument, NULL, 'r'},
+        {"tap",   required_argument, NULL, 't'},
+#if !defined(FULLTAP) && defined(MYU)
+        {"myu",   required_argument, NULL, 'u'},
+#endif
 #ifdef DEBUG
         {"verbose", no_argument, NULL, 'v'},
 #endif
@@ -103,7 +110,7 @@ main(int argc, char** argv)
     };
 
     while ((opt = getopt_long(argc, argv,
-                "l:r:t:hv?", long_options, &option_index)) != -1)
+                "l:r:t:u:hv?", long_options, &option_index)) != -1)
     {
         switch (opt)
         {
@@ -124,6 +131,12 @@ main(int argc, char** argv)
             opt_t = optarg;
             break;
 
+        case 'u':
+#if !defined(FULLTAP) && defined(MYU)
+            opt_u = optarg;
+#endif
+            break;
+
         case 'h':
         case '?':
             usage(argv[0]);
@@ -134,6 +147,28 @@ main(int argc, char** argv)
             exit(EXIT_FAILURE);
         }
     }
+
+#if !defined(FULLTAP) && defined(MYU)
+    // option --myu, -u validation check
+    if (opt_u.size() == 0) {
+        uaddr = 0;
+        umask = 0;
+    } else {
+        auto myu_tmp = split(opt_u, "/");
+        auto str_uaddr = split(myu_tmp[0], ".");
+
+        uint8_t uaddr4[4];
+        uaddr4[0] = (uint8_t)std::stol(str_uaddr[0]);
+        uaddr4[1] = (uint8_t)std::stol(str_uaddr[1]);
+        uaddr4[2] = (uint8_t)std::stol(str_uaddr[2]);
+        uaddr4[3] = (uint8_t)std::stol(str_uaddr[3]);
+
+        uaddr = (*(uint32_t*)uaddr4);
+        umask = std::stol(myu_tmp[1]);
+        MESG2("myu:addr: %d.%d.%d.%d/%d\n",
+                uaddr4[0], uaddr4[1], uaddr4[2], uaddr4[3], umask);
+    }
+#endif
 
 
     netmap* nm_l;
@@ -980,6 +1015,10 @@ usage(char* prog_name)
 #else
     printf("    -t [ifname,ifname,ifname...])\n");
 #endif
+#if !defined(FULLTAP) && defined(MYU)
+    printf("    -u [ipaddress/mask])\n");
+#endif
+
     printf("  Option..\n");
     printf("    -h/? : help usage information\n");
 #ifdef DEBUG

@@ -38,6 +38,12 @@ struct selector_info {
 struct selector_info* selector_info4;
 struct selector_info* selector_info6;
 
+#ifdef MYU
+uint32_t uaddr;
+uint8_t umask;
+#endif
+
+
 #ifdef TIFLOOKUP
 uint32_t selector_table[0x100];
 #endif
@@ -291,6 +297,26 @@ get_ip6_transport_key(struct ip6_hdr* ip6hdr)
     return 0;
 }
 
+#ifdef MYU
+inline uint32_t
+get_myu4_key(struct ip_hdr* iphdr)
+{
+    uint8_t* retval;
+    if ((iphdr->saddr & qb_vmask[umask]) == (uaddr & umask)) {
+        retval = (uint8_t*)&iphdr->saddr;
+        return *retval;
+    }
+
+    if ((iphdr->daddr & qb_vmask[umask]) == (uaddr & umask)) {
+        retval = (uint8_t*)&iphdr->daddr;
+        return *retval;
+    }
+
+    return 0;
+}
+#endif
+
+
 inline uint32_t
 next_ip4(struct ip_hdr* iphdr, int flag)
 {
@@ -298,6 +324,10 @@ next_ip4(struct ip_hdr* iphdr, int flag)
         return iphdr->saddr ^ iphdr->daddr;
     } else if (flag == 1) {
         return get_ip4_transport_key(iphdr);
+#ifdef MYU
+    } else if (flag == 2) {
+        return get_myu4_key(iphdr);
+#endif
     } else {
         return 0;
     }
